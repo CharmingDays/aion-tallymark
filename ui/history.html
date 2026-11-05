@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aion2dps - session history</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/meter.css">
+<link rel="stylesheet" href="css/history.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"><i></i><i></i><i></i></span>
+    aion2dps
+  </div>
+  <div class="fight">
+    <span class="target">Session history</span>
+    <span class="state" id="when"></span>
+    <span class="action-note" id="action-note"></span>
+  </div>
+  <div class="controls">
+    <div class="you-color" id="you-color-wrap">
+      <button class="btn" id="you-color" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="you-color-pop" title="Your name colour in replays"><span class="swatch" id="you-swatch"></span>Your color</button>
+      <div class="color-pop" id="you-color-pop" role="dialog" aria-label="Your color" hidden>
+        <div class="swatches" id="you-presets"></div>
+        <label class="custom">Custom <input type="color" id="you-custom"></label>
+      </div>
+    </div>
+    <button class="btn" id="export" type="button" title="Download this session as JSON" disabled>Export</button>
+    <button class="btn danger" id="delete" type="button" disabled>Delete session</button>
+  </div>
+</header>
+
+<main class="history-layout">
+  <aside class="card session-list">
+    <div class="card-head">
+      <h2>Saved sessions</h2>
+      <span class="sub" id="count"></span>
+    </div>
+    <div class="scroll">
+      <ul class="sessions" id="sessions"></ul>
+      <div class="empty" id="no-sessions" hidden>No saved sessions yet</div>
+    </div>
+  </aside>
+
+  <div class="card placeholder" id="placeholder">Save a fight from the meter or the overlay to replay it here.</div>
+
+  <section class="detail" id="detail" hidden>
+    <div class="card summary-card">
+      <div class="stat wide"><span class="label">Target</span><span class="value"><span id="s-target">—</span><span class="target-badge" id="s-badge" hidden></span><span class="target-badge defeated" id="s-defeated" hidden>Defeated</span></span></div>
+      <div class="stat"><span class="label">Elapsed</span><span class="value"><span id="s-elapsed">00:00</span><span class="of" id="s-length"></span></span></div>
+      <div class="stat"><span class="label">Total damage</span><span class="value" id="s-total">—</span></div>
+      <div class="stat"><span class="label">Group DPS</span><span class="value" id="s-dps">—</span></div>
+      <div class="stat heal-stat"><span class="label">Total healing</span><span class="value" id="s-heal">—</span></div>
+      <div class="stat heal-stat"><span class="label">Group HPS</span><span class="value" id="s-hps">—</span></div>
+      <div class="stat wide"><span class="label">Top DPS</span><span class="value" id="s-top">—</span></div>
+      <div class="truncated" id="truncated" hidden>This fight had more hits than the meter keeps. The replay covers the first 200,000 hits; the totals cover the whole fight.</div>
+    </div>
+
+    <section class="card chart-card">
+      <div class="card-head">
+        <h2>Damage &amp; healing over time</h2>
+        <span class="sub" id="peak"></span>
+        <div class="legend" id="legend">
+          <button type="button" class="chip on" data-series="damage" aria-pressed="true"><i></i>Damage</button>
+          <button type="button" class="chip heal on" data-series="heal" aria-pressed="true"><i></i>Healing</button>
+        </div>
+      </div>
+      <div class="chart" id="chart" title="Click to jump">
+        <svg viewBox="0 0 1000 200" preserveAspectRatio="none" aria-hidden="true">
+          <defs><clipPath id="played-clip"><rect id="played-rect" x="0" y="0" width="0" height="200"/></clipPath></defs>
+          <path class="area" id="area" d=""/>
+          <path class="line" id="line" d=""/>
+          <g clip-path="url(#played-clip)">
+            <path class="area played" id="area-played" d=""/>
+            <path class="line played" id="line-played" d=""/>
+          </g>
+          <path class="heal-area" id="heal-area" d=""/>
+          <path class="heal-line" id="heal-line" d=""/>
+          <line class="playhead" id="playhead" x1="0" y1="0" x2="0" y2="200"/>
+        </svg>
+      </div>
+    </section>
+
+    <div class="card playback">
+      <button class="play" id="play" type="button" title="Play">
+        <svg class="start" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2v9.6L12.6 8z" fill="currentColor"/></svg>
+        <svg class="pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" fill="currentColor"/></svg>
+      </button>
+      <span class="pb-state" id="pb-state">Paused</span>
+      <span class="time" id="t-now">00:00</span>
+      <input type="range" id="scrub" min="0" max="1" step="any" value="0" aria-label="Playback position">
+      <span class="time" id="t-end">00:00</span>
+      <span class="pb-label">Speed</span>
+      <div class="modes" id="speeds" role="group" aria-label="Playback speed">
+        <button type="button" data-speed="1" class="on">1x</button>
+        <button type="button" data-speed="2">2x</button>
+        <button type="button" data-speed="4">4x</button>
+      </div>
+    </div>
+
+    <section class="card roster">
+      <div class="card-head roster-head">
+        <div class="tabs" id="tabs" role="tablist">
+          <button type="button" role="tab" data-tab="players" class="on">Players</button>
+          <button type="button" role="tab" data-tab="share">Ability share</button>
+          <button type="button" role="tab" data-tab="heal" class="heal-tab">Healing</button>
+        </div>
+        <span class="sub" id="roster-sub"></span>
+        <div class="share-controls" id="share-controls" hidden>
+          <div class="modes small" id="share-scope" role="group" aria-label="Whose abilities">
+            <button type="button" data-scope="all" class="on">All players</button>
+            <button type="button" data-scope="player" id="scope-player" aria-haspopup="listbox" aria-expanded="false" aria-controls="player-pick">Select player</button>
+            <ul class="pick-list" id="player-pick" role="listbox" aria-label="Players" hidden></ul>
+          </div>
+          <span class="pb-label">Sort</span>
+          <div class="modes small" id="share-sort" role="group" aria-label="Sort by">
+            <button type="button" data-sort="damage" class="on">Damage</button>
+            <button type="button" data-sort="hits">Hits</button>
+            <button type="button" data-sort="crit">Crit %</button>
+          </div>
+        </div>
+      </div>
+      <div class="heal-controls" id="heal-controls" hidden>
+        <div class="modes small" id="heal-scope" role="group" aria-label="Whose heals">
+          <button type="button" data-scope="all" class="on">All players</button>
+          <button type="button" data-scope="player" id="heal-scope-player" aria-haspopup="listbox" aria-expanded="false" aria-controls="heal-pick">Select player</button>
+          <ul class="pick-list" id="heal-pick" role="listbox" aria-label="Players" hidden></ul>
+        </div>
+      </div>
+      <div class="scroll heal-view" id="heal-view" hidden>
+        <div class="heal-empty" id="heal-empty" hidden><strong>No healing recorded for this session</strong><span>Sessions saved before heal tracking was added only contain damage.</span></div>
+        <div class="heal-grid" id="heal-grid">
+          <div>
+            <h3 class="sub-head">Heal meter</h3>
+            <table class="players-table heal-table">
+              <colgroup><col><col class="c-num"><col class="c-num"><col class="c-pct"><col class="c-heal-bar"></colgroup>
+              <thead><tr><th>PLAYER</th><th>TOTAL</th><th>HPS</th><th>SHARE</th><th></th></tr></thead>
+              <tbody id="heal-rows"></tbody>
+            </table>
+          </div>
+          <div>
+            <h3 class="sub-head">Heal by ability</h3>
+            <table class="players-table heal-table">
+              <colgroup><col><col class="c-num"><col class="c-pct"><col class="c-share"></colgroup>
+              <tbody id="heal-skill-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="scroll" id="share-view" hidden>
+        <table class="players-table share-table">
+          <colgroup>
+            <col class="c-rank"><col><col class="c-num"><col class="c-pct"><col class="c-pct"><col class="c-pct"><col class="c-share">
+          </colgroup>
+          <thead>
+            <tr><th>#</th><th>ABILITY</th><th>DAMAGE</th><th>HITS</th><th>CRIT %</th><th>% OF TOTAL</th><th>SHARE</th></tr>
+          </thead>
+          <tbody id="share-rows"></tbody>
+        </table>
+        <div class="share-empty" id="share-empty"><strong>No damage yet</strong><span>Share updates as the replay plays</span></div>
+      </div>
+      <p class="roster-hint" id="roster-hint">Click a player to see their abilities.</p>
+      <div class="scroll" id="players-view">
+        <table class="players-table">
+          <colgroup>
+            <col class="c-rank"><col><col class="c-num"><col class="c-num"><col class="c-pct"><col class="c-pct"><col class="c-share">
+          </colgroup>
+          <thead>
+            <tr><th>RANK</th><th>NAME</th><th>TOTAL DAMAGE</th><th>DPS</th><th>% OF GROUP</th><th>CRIT %</th><th>SHARE</th></tr>
+          </thead>
+          <tbody id="players"></tbody>
+          <tfoot id="group-row" hidden>
+            <tr><td></td><td>Group total</td><td id="foot-total">0</td><td id="foot-dps">0</td><td>100%</td><td id="foot-crit">—</td><td></td></tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <aside class="card feed" id="feed-card" hidden>
+    <div class="card-head">
+      <h2><span class="feed-dot" id="feed-dot"></span>Ability feed</h2>
+      <span class="sub" id="feed-sub"></span>
+    </div>
+    <div class="modes feed-filters" id="feed-filters" role="group" aria-label="Show">
+      <button type="button" data-filter="all" class="on">All</button>
+      <button type="button" data-filter="player" id="filter-player" aria-haspopup="listbox" aria-expanded="false" aria-controls="feed-pick">Select player</button>
+      <ul class="pick-list" id="feed-pick" role="listbox" aria-label="Players" hidden></ul>
+      <button type="button" data-filter="crits">Crits only</button>
+      <button type="button" data-filter="damage">Damage</button>
+      <button type="button" data-filter="heals" id="filter-heals">Heals</button>
+    </div>
+    <div class="scroll">
+      <ol class="feed-list" id="feed"></ol>
+      <div class="feed-empty" id="feed-empty"><strong>Press play to replay this session</strong><span>Abilities will appear here as they happen.</span></div>
+    </div>
+  </aside>
+</main>
+<script src="js/format.js"></script>
+<script src="js/bridge.js"></script>
+<script src="js/player-colors.js"></script>
+<script src="js/replay-trim.js"></script>
+<script src="js/ability-share.js"></script>
+<script src="js/heal-share.js"></script>
+<script src="js/history.js"></script>
+</body>
+</html>

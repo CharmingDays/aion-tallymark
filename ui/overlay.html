@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aion2dps overlay</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/overlay.css">
+<link rel="stylesheet" href="css/notify.css">
+</head>
+<body>
+<div class="card" id="card">
+  <div class="content">
+    <header class="head">
+      <span class="dot" id="dot"></span>
+      <span class="target" id="target">Waiting for combat</span>
+      <span class="seg" id="view" role="group" aria-label="Show">
+        <button type="button" data-view="damage" class="on">Damage</button>
+        <button type="button" data-view="heal" class="heal">Heal</button>
+      </span>
+      <span class="timer" id="timer">00:00</span>
+      <button class="tool save app-only" id="save-session" type="button" title="Save session" disabled>
+        <svg class="idle" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7M4.8 6.6 8 9.8l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="done" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.4 6.4 11.6 12.8 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="tool reset" id="reset" type="button" title="Reset fight">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.4 8a5.4 5.4 0 1 1-1.6-3.8M13.4 2.6v2.8h-2.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <span class="tools app-only">
+        <button class="tool" id="open-meter" type="button" title="Open the detailed meter">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9 2h5v5M14 2 8 8M12 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="tool" id="close" type="button" title="Close the overlay">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </span>
+    </header>
+    <div class="tags" id="tags">
+      <span class="target-badge" id="target-badge" hidden></span>
+      <span class="target-badge defeated" id="target-defeated" hidden>Defeated</span>
+      <button type="button" class="lock-chip" id="lock-chip" hidden></button>
+    </div>
+    <div class="banner" id="banner" hidden>Fight ended - resets in <span id="banner-secs">30</span>s</div>
+    <section class="summary">
+      <div>
+        <div class="label" id="total-label">Group total damage</div>
+        <div class="value" id="total">0</div>
+      </div>
+      <div>
+        <div class="label" id="dps-label">Group DPS</div>
+        <div class="value" id="dps">0/s</div>
+      </div>
+    </section>
+    <div class="rows empty" id="rows">Waiting for combat</div>
+    <div class="debug-note" id="debug-note" hidden></div>
+    <footer class="foot">
+      <span id="foot-note">Idle reset in 30s</span>
+      <span id="opacity-hint"><button id="less" type="button" title="Less opaque (- key)">-</button>/<button id="more" type="button" title="More opaque (+ key)">+</button> opacity</span>
+    </footer>
+  </div>
+  <div class="rz n app-only" data-dir="North"></div>
+  <div class="rz s app-only" data-dir="South"></div>
+  <div class="rz e app-only" data-dir="East"></div>
+  <div class="rz w app-only" data-dir="West"></div>
+  <div class="rz ne app-only" data-dir="NorthEast"></div>
+  <div class="rz nw app-only" data-dir="NorthWest"></div>
+  <div class="rz se app-only" data-dir="SouthEast"></div>
+  <div class="rz sw app-only" data-dir="SouthWest"></div>
+</div>
+<script src="js/format.js"></script>
+<script src="js/bridge.js"></script>
+<script src="js/naming.js"></script>
+<script src="js/boss-lock.js"></script>
+<script src="js/session-save.js"></script>
+<script src="js/alerts-schedule.js"></script>
+<script src="js/toast-queue.js"></script>
+<script src="js/notify.js"></script>
+<script src="js/heal-share.js"></script>
+<script src="js/npcap-help.js"></script>
+<script src="js/overlay.js"></script>
+</body>
+</html>

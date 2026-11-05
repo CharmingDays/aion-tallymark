@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aion2dps</title>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/meter.css">
+<link rel="stylesheet" href="css/notify.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"><i></i><i></i><i></i></span>
+    aion2dps
+  </div>
+  <div class="fight">
+    <span class="dot" id="dot"></span>
+    <span class="target" id="target">Waiting for combat</span>
+    <span class="target-badge" id="target-badge" hidden></span>
+    <span class="target-badge defeated" id="target-defeated" hidden>Defeated</span>
+    <button type="button" class="lock-chip" id="lock-chip" hidden></button>
+    <span class="state" id="state">· idle</span>
+    <span class="ended" id="ended" hidden>Fight ended - resets in <span id="ended-secs">30</span>s</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><span class="label">Fight time</span><span class="value" id="time">00:00</span></div>
+    <div class="stat"><span class="label" id="total-label">Group total damage</span><span class="value" id="total">0</span></div>
+    <div class="stat"><span class="label" id="dps-label">Group DPS</span><span class="value" id="dps">0/s</span></div>
+  </div>
+  <div class="controls">
+    <div class="modes" id="modes" role="group" aria-label="Targets counted">
+      <button type="button" data-mode="current" class="on">Current</button>
+      <button type="button" data-mode="boss">Boss</button>
+      <button type="button" data-mode="all">All targets</button>
+    </div>
+    <button class="btn" id="reset" type="button">Reset fight</button>
+    <button class="btn alerts-btn" id="open-alerts" type="button" title="Event alerts"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2a3.8 3.8 0 0 0-3.8 3.8v2.6L3 10.8h10l-1.2-2.2V6A3.8 3.8 0 0 0 8 2.2zM6.6 12.8a1.5 1.5 0 0 0 2.8 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>Alerts</button>
+    <button class="btn" id="open-history" type="button" title="Saved sessions">History</button>
+    <button class="btn save-btn" id="save-session" type="button" title="Save session" disabled>
+      <span class="idle"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7M4.8 6.6 8 9.8l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Save session</span>
+      <span class="done"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.4 6.4 11.6 12.8 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Saved</span>
+    </button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="card players">
+    <div class="card-head">
+      <h2>Players</h2>
+      <span class="sub" id="players-sub">No hits yet</span>
+      <div class="modes small view-toggle" id="view" role="group" aria-label="Show">
+        <button type="button" data-view="damage" class="on">Damage</button>
+        <button type="button" data-view="heal" class="heal">Heal</button>
+      </div>
+    </div>
+    <div class="scroll">
+      <table class="players-table">
+        <colgroup>
+          <col class="c-rank"><col><col class="c-num"><col class="c-num"><col class="c-pct"><col class="c-pct"><col class="c-share">
+        </colgroup>
+        <thead>
+          <tr id="players-headings"><th>RANK</th><th>NAME</th><th>TOTAL DAMAGE</th><th>DPS</th><th>% OF GROUP</th><th>CRIT %</th><th>SHARE</th></tr>
+        </thead>
+        <tbody id="players">
+          <tr class="empty-row"><td colspan="7">No hits yet. Damage is read from game packets, not from memory.</td></tr>
+        </tbody>
+        <tfoot id="group-row" hidden>
+          <tr><td></td><td>Group total</td><td id="foot-total">0</td><td id="foot-dps">0</td><td>100%</td><td id="foot-crit">—</td><td></td></tr>
+        </tfoot>
+      </table>
+    </div>
+  </section>
+
+  <section class="card recent">
+    <div class="card-head">
+      <h2>Recent hits</h2>
+      <span class="sub" id="recent-sub">Selected player and damage taken</span>
+    </div>
+    <div class="scroll">
+      <table class="list">
+        <colgroup><col class="c-who"><col><col class="c-amount"><col class="c-type"></colgroup>
+        <thead><tr><th>WHO</th><th>SKILL</th><th>AMOUNT</th><th>TYPE</th></tr></thead>
+        <tbody id="recent"><tr class="empty-row"><td colspan="4">—</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card history">
+    <div class="card-head">
+      <h2>Finished pulls</h2>
+      <button class="btn small" id="clear-history" type="button">Clear</button>
+    </div>
+    <div class="scroll">
+      <table class="list">
+        <colgroup><col class="c-when"><col><col class="c-num"><col class="c-num"><col class="c-num"></colgroup>
+        <thead><tr><th>WHEN</th><th>UNIT</th><th>DAMAGE</th><th>DPS</th><th>DURATION</th></tr></thead>
+        <tbody id="history"><tr class="empty-row"><td colspan="5">Finished pulls are kept here, one row per unit.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <aside class="card skills">
+    <div class="card-head">
+      <h2 id="detail-title">Damage by skill</h2>
+      <span class="sub" id="skills-player">Select a player</span>
+      <div class="modes small view-toggle" id="detail-view" role="tablist" aria-label="Detail">
+        <button type="button" role="tab" data-view="damage" class="on">Damage</button>
+        <button type="button" role="tab" data-view="heal" class="heal">Healing</button>
+      </div>
+    </div>
+    <div class="tiles" id="tiles">
+      <div class="tile"><span class="label">Damage</span><span class="value" id="t-damage">—</span></div>
+      <div class="tile"><span class="label">Hits</span><span class="value" id="t-hits">—</span></div>
+      <div class="tile"><span class="label">Crit %</span><span class="value" id="t-crit">—</span></div>
+      <div class="tile"><span class="label">Back %</span><span class="value" id="t-back">—</span></div>
+    </div>
+    <div class="extras" id="extras"></div>
+    <div class="scroll skill-list" id="skills"><div class="empty">Select a player in the table.</div></div>
+    <div class="tiles heal-tiles" id="heal-tiles" hidden>
+      <div class="tile"><span class="label">Total heal</span><span class="value" id="h-total">—</span></div>
+      <div class="tile"><span class="label">HPS</span><span class="value" id="h-hps">—</span></div>
+      <div class="tile"><span class="label">Share</span><span class="value" id="h-share">—</span></div>
+    </div>
+    <div class="scroll skill-list" id="heal-detail" hidden>
+      <h3 class="sub-head">Heal by ability</h3>
+      <div id="heal-skills"></div>
+      <h3 class="sub-head" id="heal-feed-head">Heal feed</h3>
+      <ol class="heal-feed" id="heal-feed"></ol>
+    </div>
+  </aside>
+</main>
+
+<footer class="statusbar">
+  <div id="capture" class="capture">Starting capture…</div>
+  <button id="get-npcap" class="get-npcap" type="button" title="Open npcap.com in your browser" hidden>Get Npcap</button>
+  <div id="debug-note" class="debug-note" hidden></div>
+  <form class="settings" id="settings">
+    <label for="reset-secs">Reset damage after</label>
+    <input id="reset-secs" type="number" min="5" max="3600" step="1" value="30">
+    <span>s without a hit</span>
+    <button class="btn small" type="submit">Save</button>
+    <span id="settings-note" class="note"></span>
+  </form>
+  <form class="settings" id="boss-settings">
+    <span class="group">Boss</span>
+    <label class="check" title="Keep showing a boss while you fight it, so hitting other monsters doesn't switch the view. They are still recorded."><input id="boss-engage" type="checkbox" checked> Lock on boss while fighting</label>
+    <label for="boss-lock-secs" title="Keep showing a boss for this long after it dies, so you can save it. 0 turns it off.">Lock after boss dies</label>
+    <input id="boss-lock-secs" type="number" min="0" max="60" step="1" value="10">
+    <span>s</span>
+    <label for="boss-damage" title="A target that takes this much damage counts as a boss.">Boss damage threshold</label>
+    <input id="boss-damage" class="wide" type="text" inputmode="numeric" value="1,500,000">
+    <button class="btn small" type="submit">Save</button>
+    <span id="boss-note" class="note"></span>
+  </form>
+  <div class="where">
+    <button class="link app-only" id="open-browser" type="button">Open in browser</button>
+    <span>127.0.0.1 only · packets only, no memory reads</span>
+  </div>
+</footer>
+<script src="js/format.js"></script>
+<script src="js/bridge.js"></script>
+<script src="js/naming.js"></script>
+<script src="js/boss-lock.js"></script>
+<script src="js/session-save.js"></script>
+<script src="js/alerts-schedule.js"></script>
+<script src="js/toast-queue.js"></script>
+<script src="js/notify.js"></script>
+<script src="js/alerts-panel.js"></script>
+<script src="js/heal-share.js"></script>
+<script src="js/npcap-help.js"></script>
+<script src="js/meter.js"></script>
+</body>
+</html>

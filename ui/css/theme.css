@@ -1,0 +1,73 @@
+/* Design tokens from the Figma file MQ5VubclPrFmi3DDFyE9cB (page "Meter"). */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+  src: url("../fonts/Inter-Variable.woff2") format("woff2-variations"),
+       url("../fonts/Inter-Variable.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: block;
+  src: url("../fonts/Inter-Variable-Italic.woff2") format("woff2-variations"),
+       url("../fonts/Inter-Variable-Italic.woff2") format("woff2");
+}
+
+:root {
+  --bg: #0F1115;
+  --overlay-bg: 15, 17, 21;      /* #0F1115 as rgb, alpha set per window */
+  --overlay-alpha: 0.88;
+  --panel: #161A21;
+  --surface: #1E232C;
+  --border: #2A303B;
+  --text: #E6E9EF;
+  --muted: #8A93A3;
+  --faint: #5A6272;
+  --accent: #5B9DFF;
+  --accent-hl: rgba(91, 157, 255, 0.2);
+  --live: #4ADE80;
+  --heal: #4ADE80;
+  --heal-tag: rgba(74, 222, 128, 0.15);
+  --heal-hl: rgba(74, 222, 128, 0.2);
+  --danger: #F87171;
+
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-2h: 10px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 40px;
+
+  --font: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+button { font: inherit; color: inherit; }
+
+.dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.dot.live { background: var(--live); box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.15); }
+
+.label {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}

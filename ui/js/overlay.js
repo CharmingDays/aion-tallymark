@@ -1,0 +1,272 @@
+// Compact always-on-top overlay. -/+ (keys or footer buttons) change opacity,
+// the layout scales with the window, and a press on the card moves the window.
+// A click that does not move on a typed target's name opens the name editor.
+(function () {
+  const { esc, short, clock, fightState, debugNote, UNKNOWN } = window.fmt;
+  const bridge = window.meterBridge;
+  const $ = (id) => document.getElementById(id);
+
+  const DESIGN_WIDTH = 360;
+  /** Height that still fits the header, summary, footer and a row or two. */
+  const MIN_HEIGHT = 230;
+  const ROW_PITCH_REM = 3.7;
+  const ROWS_PADDING_REM = 1.0;
+  const MAX_ROWS = 12;
+
+  const OPACITY_KEY = 'aion2dps.opacity';
+  const VIEW_KEY = 'aion2dps.overlay.view';
+  const heals = window.healShare;
+  const STEP = 0.1;
+  const MIN_LEVEL = 0.2;
+  const MAX_LEVEL = 1;
+  /** Panel alpha at full opacity, from the design (#0F1115 at 88%). */
+  const PANEL_ALPHA = 0.88;
+
+  const HINT_MS = 1200;
+  /** A press on the target label that moves this far drags the window instead. */
+  const DRAG_SLOP_PX = 4;
+
+  let level = readLevel();
+  let view = heals.view(localStorage.getItem(VIEW_KEY));
+  let latest = null;
+  let hintUntil = 0;
+  let press = null;
+
+  if (bridge.inApp) document.body.classList.add('in-app');
+
+  const naming = window.targetNaming.create({
+    label: $('target'),
+    badge: $('target-badge'),
+    save: (type, name) => bridge.setMonsterName(type, name),
+    focus: () => bridge.focusWindow(),
+  });
+  const saving = window.sessionSave.create($('save-session'), {
+    save: () => bridge.saveSession(),
+    onSaved: (summary) => {
+      $('foot-note').textContent = `Session saved · ${clock(summary.duration_ms)}`;
+      hintUntil = Date.now() + window.sessionSave.SAVED_MS;
+    },
+  });
+
+  function readLevel() {
+    const n = Number(localStorage.getItem(OPACITY_KEY));
+    if (!Number.isFinite(n) || n <= 0) return MAX_LEVEL;
+    return Math.min(MAX_LEVEL, Math.max(MIN_LEVEL, Math.round(n / STEP) * STEP));
+  }
+
+  function remPx() {
+    return parseFloat(getComputedStyle(document.documentElement).fontSize) || 10;
+  }
+
+  function scale() {
+    const s = Math.min(innerWidth / DESIGN_WIDTH, innerHeight / MIN_HEIGHT);
+    const px = 10 * Math.min(4, Math.max(0.6, s));
+    document.documentElement.style.fontSize = `${px.toFixed(2)}px`;
+  }
+
+  function paintOpacity() {
+    const card = $('card');
+    card.style.setProperty('--overlay-alpha', (PANEL_ALPHA * level).toFixed(3));
+    card.style.setProperty('--content-opacity', (0.4 + 0.6 * level).toFixed(3));
+    $('less').disabled = level <= MIN_LEVEL + 1e-6;
+    $('more').disabled = level >= MAX_LEVEL - 1e-6;
+    localStorage.setItem(OPACITY_KEY, level.toFixed(1));
+  }
+
+  function stepOpacity(direction) {
+    level = Math.min(MAX_LEVEL, Math.max(MIN_LEVEL, Math.round((level + direction * STEP) * 10) / 10));
+    paintOpacity();
+    $('foot-note').textContent = `Opacity ${Math.round(level * 100)}%`;
+    hintUntil = Date.now() + HINT_MS;
+  }
+
+  function rowCapacity(box) {
+    const rem = remPx();
+    const room = box.clientHeight - ROWS_PADDING_REM * rem;
+    return Math.max(1, Math.min(MAX_ROWS, Math.floor((room + 0.6 * rem) / (ROW_PITCH_REM * rem))));
+  }
+
+  function paintBoss(m) {
+    const lock = m.lock || null;
+    const chip = $('lock-chip');
+    chip.hidden = !lock;
+    chip.textContent = window.bossLock.chipText(lock);
+    chip.title = window.bossLock.chipTitle(lock);
+    $('target-defeated').hidden = !window.bossLock.defeated(m) || naming.editing();
+  }
+
+  function render(data) {
+    latest = data;
+    const m = data.meter;
+    const f = fightState(data);
+
+    $('dot').className = f.live ? 'dot live' : 'dot';
+    $('target').textContent = f.target;
+    naming.update(data, f);
+    paintBoss(m);
+    $('timer').textContent = clock(f.time);
+    $('banner').hidden = !f.ended;
+    $('banner-secs').textContent = String(f.resetIn);
+    const healing = view === heals.VIEW_HEAL;
+    document.querySelectorAll('#view button').forEach((b) => b.classList.toggle('on', b.dataset.view === view));
+    $('card').classList.toggle('heal-view', healing);
+    $('total-label').textContent = healing ? 'Group healing' : 'Group total damage';
+    $('dps-label').textContent = healing ? 'Group HPS' : 'Group DPS';
+    $('total').textContent = healing ? short(m.encounter_heal || 0) : short(m.encounter_damage);
+    $('dps').textContent = `${short(healing ? m.encounter_hps || 0 : m.encounter_dps)}/s`;
+    saving.update(m.encounter_damage > 0);
+    if (Date.now() >= hintUntil) {
+      $('foot-note').textContent = healing
+        ? 'Shields/absorbs not counted'
+        : f.ended
+          ? `Damage kept ${f.resetSecs}s after kill`
+          : `Idle reset in ${f.resetSecs}s`;
+    }
+
+    const note = $('debug-note');
+    note.textContent = debugNote(data.capture);
+    note.title = note.textContent;
+    note.hidden = !note.textContent;
+
+    const box = $('rows');
+    if (healing) {
+      renderHeals(box, m, f, data);
+      return;
+    }
+    const players = m.players;
+    if (!players.length) {
+      box.className = 'rows empty';
+      emptyRows(box, data.capture.error, 'Waiting for combat');
+      return;
+    }
+    box.className = f.ended ? 'rows dim' : 'rows';
+    const shown = players.slice(0, rowCapacity(box));
+    const you = players.find((p) => p.you);
+    if (you && !shown.includes(you)) shown[shown.length - 1] = you;
+    const top = Math.max(1, players[0].damage);
+    box.innerHTML = shown.map((p) => {
+      const cls = ['row'];
+      if (p.you) cls.push('you');
+      if (p.name === UNKNOWN) cls.push('unknown');
+      const width = Math.round((p.damage / top) * 1000) / 10;
+      return `<div class="${cls.join(' ')}">
+        <span class="rank">${players.indexOf(p) + 1}</span>
+        <span class="avatar"></span>
+        <span class="name">${esc(p.name)}${p.heal > 0 ? `<b class="heal-badge">${heals.badge(p.heal, short)}</b>` : ''}</span>
+        <span class="dmg">${short(p.damage)}</span>
+        <span class="dps">${short(p.dps)}</span>
+        <span class="pct">${Math.round(p.pct * 100)}%</span>
+        <span class="bar"><i style="width:${width}%"></i></span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderHeals(box, m, f, data) {
+    const rows = heals.healerRows(m.healers);
+    if (!rows.length) {
+      box.className = 'rows empty';
+      emptyRows(box, data.capture.error, 'No healing yet');
+      return;
+    }
+    box.className = f.ended ? 'rows dim' : 'rows';
+    const shown = rows.slice(0, rowCapacity(box));
+    const you = rows.find((h) => h.you);
+    if (you && !shown.includes(you)) shown[shown.length - 1] = you;
+    box.innerHTML = shown.map((h) => {
+      const cls = ['row', 'heal'];
+      if (h.you) cls.push('you');
+      if (h.name === UNKNOWN) cls.push('unknown');
+      return `<div class="${cls.join(' ')}">
+        <span class="rank">${rows.indexOf(h) + 1}</span>
+        <span class="avatar"></span>
+        <span class="name">${esc(h.name)}</span>
+        <span class="dmg">${short(h.heal)}</span>
+        <span class="dps">${short(h.hps)}</span>
+        <span class="pct">${Math.round(h.pct * 100)}%</span>
+        <span class="bar"><i style="width:${h.width}%"></i></span>
+      </div>`;
+    }).join('');
+  }
+
+  /** Empty-state text; a missing-Npcap error also gets a "Get Npcap" button. */
+  function emptyRows(box, error, idle) {
+    const text = error || idle;
+    // Pushes arrive several times a second; keep the same button so a click lands.
+    if (box.dataset.empty === text && box.querySelector('.get-npcap')) return;
+    box.dataset.empty = text;
+    box.textContent = text;
+    if (!npcapHelp.needsNpcap(error)) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'get-npcap';
+    btn.title = 'Open npcap.com in your browser';
+    btn.textContent = npcapHelp.BUTTON;
+    btn.addEventListener('click', () => bridge.openNpcap());
+    box.append(btn);
+  }
+
+  function showError() {
+    const box = $('rows');
+    box.className = 'rows empty';
+    box.textContent = 'Lost the local meter.';
+  }
+
+  $('card').addEventListener('mousedown', (event) => {
+    if (event.button !== 0 || event.target.closest('button, .rz, .name-edit, .seg')) return;
+    if (event.target.closest('#target') && naming.clickable()) {
+      press = { x: event.screenX, y: event.screenY };
+      return;
+    }
+    bridge.startDrag();
+  });
+  window.addEventListener('mousemove', (event) => {
+    if (!press) return;
+    if (!(event.buttons & 1)) {
+      press = null;
+      return;
+    }
+    if (Math.hypot(event.screenX - press.x, event.screenY - press.y) < DRAG_SLOP_PX) return;
+    press = null;
+    bridge.startDrag();
+  });
+  window.addEventListener('mouseup', (event) => {
+    if (!press || event.button !== 0) return;
+    press = null;
+    if (event.target.closest('#target')) naming.click();
+  });
+  document.querySelectorAll('.rz').forEach((zone) => zone.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    bridge.startResize(zone.dataset.dir);
+  }));
+  document.querySelectorAll('#view button').forEach((b) => b.addEventListener('click', () => {
+    view = heals.view(b.dataset.view);
+    localStorage.setItem(VIEW_KEY, view);
+    if (latest) render(latest);
+  }));
+  $('close').addEventListener('click', () => bridge.closeWindow());
+  $('lock-chip').addEventListener('click', () => bridge.unlock().catch(() => {}));
+  // Same as Reset fight in the detailed meter: ends any boss lock and archives the fight.
+  $('reset').addEventListener('click', () => bridge.reset().catch(showError));
+  $('open-meter').addEventListener('click', () => bridge.openMeter());
+  $('less').addEventListener('click', () => stepOpacity(-1));
+  $('more').addEventListener('click', () => stepOpacity(1));
+  window.addEventListener('keydown', (event) => {
+    if (event.ctrlKey || event.altKey || event.metaKey || naming.editing()) return;
+    if (event.key === '-' || event.code === 'NumpadSubtract') stepOpacity(-1);
+    else if (event.key === '+' || event.key === '=' || event.code === 'NumpadAdd') stepOpacity(1);
+    else return;
+    event.preventDefault();
+  });
+  window.addEventListener('resize', () => {
+    scale();
+    if (latest) render(latest);
+  });
+
+  scale();
+  paintOpacity();
+  bridge.subscribe(render, showError);
+  // Event alerts: at the top of the screen in the app, a compact pill here in
+  // a browser. They are set up in the detailed meter.
+  window.notify.startAlerts(window.notify.hostFor({ compact: true }));
+})();
