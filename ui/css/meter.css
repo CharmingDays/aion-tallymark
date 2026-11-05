@@ -17,13 +17,14 @@ body {
 .topbar {
   flex: 0 0 auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--s-5);
+  gap: var(--s-3) var(--s-5);
   padding: var(--s-4) var(--s-5);
   background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
-.brand { display: flex; align-items: center; gap: var(--s-2h); font-size: 16px; font-weight: 700; letter-spacing: 0.01em; }
+.brand { flex: 0 0 auto; display: flex; align-items: center; gap: var(--s-2h); font-size: 16px; font-weight: 700; letter-spacing: 0.01em; }
 .logo {
   width: 24px; height: 24px;
   display: flex; flex-direction: column; justify-content: center; gap: 3px;
@@ -37,15 +38,25 @@ body {
 .logo i:nth-child(2) { width: 75%; background: var(--muted); }
 .logo i:nth-child(3) { width: 50%; }
 .fight {
-  flex: 1 1 auto;
+  /* Take leftover space between brand and stats; shrink with ellipsis, never overflow. */
+  flex: 1 1 12rem;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--s-2);
   padding-left: var(--s-5);
   border-left: 1px solid var(--border);
+  overflow: hidden;
 }
-.fight .target { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fight .target {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .fight .target.nameable { cursor: pointer; }
 .fight .target.nameable:hover { text-decoration: underline dotted var(--faint); text-underline-offset: 4px; }
 .name-edit {
@@ -77,9 +88,10 @@ body {
 }
 .lock-chip:hover { filter: brightness(1.15); }
 .lock-chip[hidden] { display: none; }
-.fight .state { color: var(--muted); white-space: nowrap; }
+.fight .state { flex: 0 0 auto; color: var(--muted); white-space: nowrap; }
 .fight .state.live { color: var(--live); }
 .ended {
+  flex: 0 0 auto;
   margin-left: var(--s-2);
   padding: 3px var(--s-2h);
   border-radius: var(--r-sm);
@@ -90,10 +102,20 @@ body {
   white-space: nowrap;
 }
 .ended[hidden] { display: none; }
-.stats { display: flex; gap: var(--s-6); }
+.stats {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--s-6);
+}
 .stat { display: flex; flex-direction: column; gap: 2px; }
-.stat .value { font-size: 20px; font-weight: 700; line-height: 1.2; white-space: nowrap; }
-.controls { display: flex; gap: var(--s-2); align-items: center; }
+.stat .value { font-size: 20px; font-weight: 700; line-height: 1.2; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.controls {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+}
 
 .modes { display: flex; padding: 2px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); }
 .modes button {
@@ -302,7 +324,17 @@ body:not(.in-app) .app-only { display: none; }
 
 @media (max-width: 1180px) {
   .stats { gap: var(--s-5); }
-  .topbar { flex-wrap: wrap; }
+}
+@media (max-width: 1024px) {
+  /* Brand + stats on row 1; status on its own row; controls below. */
+  .fight {
+    flex: 1 0 100%;
+    order: 2;
+    padding-left: 0;
+    border-left: 0;
+  }
+  .stats { order: 1; margin-left: auto; }
+  .controls { order: 3; flex: 1 1 100%; }
 }
 @media (max-width: 1000px) {
   html, body { height: auto; }

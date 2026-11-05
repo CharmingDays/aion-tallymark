@@ -40,8 +40,11 @@
   function renderTop(data, f) {
     const m = data.meter;
     $('dot').className = f.live ? 'dot live' : 'dot';
-    $('target').textContent = f.target;
+    const targetEl = $('target');
+    targetEl.textContent = f.target;
     naming.update(data, f);
+    // Keep a tooltip for ellipsis when naming did not set a more specific title.
+    if (!targetEl.title) targetEl.title = f.target;
     paintBoss(m);
     const state = $('state');
     state.textContent = f.live ? '· live' : f.hasFight ? '· paused' : '· idle';
