@@ -10,10 +10,9 @@
   const HEAL_HEADINGS = ['#', 'NAME', 'TOTAL HEAL', 'HPS', '% OF GROUP', '', 'SHARE'];
 
   let selected = null;
-  let settingsDirty = false;
-  let bossDirty = false;
-  let engageSaving = false;
-  let openWhenSaving = false;
+  // Config panel edits wait for its single Save button.
+  let configDirty = false;
+  let configSaving = false;
   const bossLock = window.bossLock;
   let latest = null;
   let view = heals.view(localStorage.getItem(VIEW_KEY));
@@ -262,23 +261,17 @@
     renderRecent(m);
     renderHistory(data.history || []);
     renderCapture(data.capture);
-    const input = $('reset-secs');
-    if (!settingsDirty && document.activeElement !== input && data.settings) {
-      input.value = data.settings.reset_after_secs;
+    if (!configDirty && !configSaving && data.settings) loadConfig(data.settings);
+  }
+
+  function loadConfig(s) {
+    if (s.reset_after_secs != null) $('reset-secs').value = s.reset_after_secs;
+    if (s.boss_lock_secs != null) {
+      $('boss-lock-secs').value = s.boss_lock_secs;
+      $('boss-damage').value = bossLock.formatDamage(s.boss_damage_threshold);
     }
-    const lockInput = $('boss-lock-secs');
-    const damageInput = $('boss-damage');
-    const editingBoss = [lockInput, damageInput].includes(document.activeElement);
-    if (!bossDirty && !editingBoss && data.settings && data.settings.boss_lock_secs != null) {
-      lockInput.value = data.settings.boss_lock_secs;
-      damageInput.value = bossLock.formatDamage(data.settings.boss_damage_threshold);
-    }
-    if (data.settings && typeof data.settings.boss_engage_lock === 'boolean' && !engageSaving) {
-      $('boss-engage').checked = data.settings.boss_engage_lock;
-    }
-    if (data.settings && typeof data.settings.open_when_aion2 === 'boolean' && !openWhenSaving) {
-      $('open-when-aion2').checked = data.settings.open_when_aion2;
-    }
+    if (typeof s.boss_engage_lock === 'boolean') $('boss-engage').checked = s.boss_engage_lock;
+    if (typeof s.open_when_aion2 === 'boolean') $('open-when-aion2').checked = s.open_when_aion2;
   }
 
   function lost() {
@@ -307,71 +300,78 @@
   $('clear-history').addEventListener('click', () => bridge.clearHistory().catch(lost));
   $('open-history').addEventListener('click', () => bridge.openHistory());
   $('open-browser').addEventListener('click', () => bridge.openInBrowser());
-  $('reset-secs').addEventListener('input', () => { settingsDirty = true; });
-  $('settings').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const secs = Number($('reset-secs').value);
-    const note = $('settings-note');
-    try {
-      await bridge.setResetSecs(secs);
-      settingsDirty = false;
-      note.textContent = `Saved: ${secs}s.`;
-    } catch (_) {
-      note.textContent = 'Use 5 to 3600.';
-    }
+  const saveBtn = $('config-save');
+  const configNote = $('config-note');
+  let savedTimer = null;
+  const notes = ['settings-note', 'boss-note', 'app-note'];
+  function setDirty(on) {
+    configDirty = on;
+    saveBtn.disabled = !on || configSaving;
+    if (on) { clearTimeout(savedTimer); configNote.textContent = ''; configNote.className = 'cp-status'; }
+  }
+  ['reset-secs', 'boss-lock-secs', 'boss-damage'].forEach((id) => $(id).addEventListener('input', () => setDirty(true)));
+  ['boss-engage', 'open-when-aion2'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
+  // Closing the panel discards unsaved edits; the next open shows the saved values.
+  document.addEventListener('config:closed', () => {
+    setDirty(false);
+    notes.forEach((id) => { $(id).textContent = ''; });
+    configNote.textContent = '';
+    if (latest && latest.settings) loadConfig(latest.settings);
   });
 
-  $('lock-chip').addEventListener('click', () => bridge.unlock().catch(lost));
-  ['boss-lock-secs', 'boss-damage'].forEach((id) => $(id).addEventListener('input', () => { bossDirty = true; }));
-  // Applies at once: no Save needed for the checkbox.
-  $('boss-engage').addEventListener('change', async () => {
-    const on = $('boss-engage').checked;
-    const note = $('boss-note');
-    engageSaving = true;
-    try {
-      await bridge.setBossSettings({ engageLock: on });
-      note.textContent = on ? 'Saved: lock on boss while fighting.' : 'Saved: no lock while fighting.';
-    } catch (_) {
-      $('boss-engage').checked = !on;
-      note.textContent = 'Could not save.';
-    } finally {
-      engageSaving = false;
-    }
-  });
-  $('open-when-aion2').addEventListener('change', async () => {
-    const on = $('open-when-aion2').checked;
-    const note = $('app-note');
-    openWhenSaving = true;
-    try {
-      await bridge.setOpenWhenAion2(on);
-      note.textContent = on
-        ? 'Saved: close the overlay to wait in the tray for Aion 2.'
-        : 'Saved: closing the overlay quits the app.';
-    } catch (_) {
-      $('open-when-aion2').checked = !on;
-      note.textContent = 'Could not save.';
-    } finally {
-      openWhenSaving = false;
-    }
-  });
-  $('boss-settings').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const note = $('boss-note');
-    const secs = bossLock.parseLockSecs($('boss-lock-secs').value);
-    if (!secs.ok) { note.textContent = secs.error; return; }
+  async function saveConfig() {
+    if (!configDirty || configSaving) return;
+    notes.forEach((id) => { $(id).textContent = ''; });
+    const s = (latest && latest.settings) || {};
+    const resetSecs = Number($('reset-secs').value);
+    const lock = bossLock.parseLockSecs($('boss-lock-secs').value);
+    if (!lock.ok) { $('boss-note').textContent = lock.error; return; }
     const damage = bossLock.parseBossDamage($('boss-damage').value);
-    if (!damage.ok) { note.textContent = damage.error; return; }
-    try {
-      await bridge.setBossSettings({
-        lockSecs: secs.value, damageThreshold: damage.value, engageLock: $('boss-engage').checked,
-      });
-      bossDirty = false;
-      $('boss-damage').value = bossLock.formatDamage(damage.value);
-      note.textContent = secs.value === 0 ? 'Saved: lock off.' : `Saved: ${secs.value}s lock.`;
-    } catch (_) {
-      note.textContent = 'Could not save.';
+    if (!damage.ok) { $('boss-note').textContent = damage.error; return; }
+    const engage = $('boss-engage').checked;
+    const openWhen = $('open-when-aion2').checked;
+    configSaving = true;
+    saveBtn.disabled = true;
+    let failed = false;
+    if (resetSecs !== s.reset_after_secs) {
+      try { await bridge.setResetSecs(resetSecs); } catch (_) { failed = true; $('settings-note').textContent = 'Use 5 to 3600.'; }
     }
-  });
+    if (lock.value !== s.boss_lock_secs || damage.value !== s.boss_damage_threshold || engage !== s.boss_engage_lock) {
+      try {
+        await bridge.setBossSettings({ lockSecs: lock.value, damageThreshold: damage.value, engageLock: engage });
+        $('boss-damage').value = bossLock.formatDamage(damage.value);
+      } catch (_) { failed = true; $('boss-note').textContent = 'Could not save.'; }
+    }
+    if (bridge.inApp && openWhen !== s.open_when_aion2) {
+      try {
+        await bridge.setOpenWhenAion2(openWhen);
+        $('app-note').textContent = openWhen
+          ? 'Close the overlay to wait in the tray for Aion 2.'
+          : 'Closing the overlay quits the app.';
+      } catch (_) { failed = true; $('app-note').textContent = 'Could not save.'; }
+    }
+    configSaving = false;
+    clearTimeout(savedTimer);
+    if (failed) {
+      configNote.textContent = 'Some settings could not be saved.';
+      configNote.className = 'cp-status bad';
+      setDirty(true);
+      configNote.textContent = 'Some settings could not be saved.';
+      configNote.className = 'cp-status bad';
+    } else {
+      setDirty(false);
+      configNote.textContent = 'Saved';
+      configNote.className = 'cp-status ok';
+      savedTimer = setTimeout(() => { configNote.textContent = ''; }, 2500);
+    }
+  }
+  saveBtn.addEventListener('click', saveConfig);
+  // Enter in a field saves the whole panel too.
+  ['settings', 'boss-settings', 'app-settings'].forEach((id) => $(id).addEventListener('submit', (event) => {
+    event.preventDefault();
+    saveConfig();
+  }));
+  $('lock-chip').addEventListener('click', () => bridge.unlock().catch(lost));
 
   bridge.subscribe(render, lost);
   const notifier = window.notify.startAlerts(window.notify.hostFor());

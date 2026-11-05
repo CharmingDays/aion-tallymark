@@ -140,7 +140,6 @@
     <label for="reset-secs">Reset damage after</label>
     <input id="reset-secs" type="number" min="5" max="3600" step="1" value="30">
     <span>s without a hit</span>
-    <button class="btn small" type="submit">Save</button>
     <span id="settings-note" class="note"></span>
   </form>
   <h3 class="cp-group">Boss lock</h3>
@@ -151,7 +150,6 @@
     <span>s</span>
     <label for="boss-damage" title="A target that takes this much damage counts as a boss.">Boss damage threshold</label>
     <input id="boss-damage" class="wide" type="text" inputmode="numeric" value="1,500,000">
-    <button class="btn small" type="submit">Save</button>
     <span id="boss-note" class="note"></span>
   </form>
   <h3 class="cp-group app-only">App</h3>
@@ -160,6 +158,7 @@
     <span id="app-note" class="note"></span>
   </form>
   </div>
+  <div class="cp-foot"><span id="config-note" class="cp-status" aria-live="polite"></span><button class="btn small cp-save" id="config-save" type="button" disabled>Save</button></div>
 </section>
 <footer class="statusbar">
   <div id="capture" class="capture">Starting capture…</div>
