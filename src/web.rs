@@ -1,4 +1,4 @@
-﻿//! Localhost pages. Bound to 127.0.0.1 so the meter is not reachable from other machines.
+//! Localhost pages. Bound to 127.0.0.1 so the meter is not reachable from other machines.
 //!
 //! The pages are the same files the desktop app bundles from `ui/`, embedded at
 //! compile time, so the browser and the app windows always match.
@@ -55,6 +55,14 @@ static FILES: &[(&str, &str, &[u8])] = &[
     ("/js/alerts-schedule.js", JS, include_bytes!("../ui/js/alerts-schedule.js")),
     ("/js/notify.js", JS, include_bytes!("../ui/js/notify.js")),
     ("/js/alerts-panel.js", JS, include_bytes!("../ui/js/alerts-panel.js")),
+    ("/js/config-panel.js", JS, include_bytes!("../ui/js/config-panel.js")),
+    ("/js/toast-queue.js", JS, include_bytes!("../ui/js/toast-queue.js")),
+    ("/js/heal-share.js", JS, include_bytes!("../ui/js/heal-share.js")),
+    ("/js/npcap-help.js", JS, include_bytes!("../ui/js/npcap-help.js")),
+    ("/js/ability-share.js", JS, include_bytes!("../ui/js/ability-share.js")),
+    ("/js/replay-trim.js", JS, include_bytes!("../ui/js/replay-trim.js")),
+    ("/js/toast.js", JS, include_bytes!("../ui/js/toast.js")),
+    ("/toast.html", HTML, include_bytes!("../ui/toast.html")),
     (
         "/fonts/Inter-Variable.woff2",
         WOFF2,
@@ -102,6 +110,7 @@ async fn page(uri: Uri) -> impl IntoResponse {
         "/" => "/index.html",
         "/overlay" => "/overlay.html",
         "/history" => "/history.html",
+        "/toast" => "/toast.html",
         other => other,
     };
     match FILES.iter().find(|(name, _, _)| *name == path) {
@@ -490,6 +499,48 @@ mod tests {
         assert_eq!(delete(write()).await.status(), StatusCode::NOT_FOUND);
         assert_eq!(state.sessions().len(), 1, "the other save is still there");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn every_ui_page_asset_is_embedded() {
+        // Keeps the localhost server in sync with <script>/<link> tags in ui/*.html.
+        // A missing entry 404s in the browser and can abort meter.js before live data paints.
+        let pages: &[&[u8]] = &[
+            include_bytes!("../ui/index.html"),
+            include_bytes!("../ui/overlay.html"),
+            include_bytes!("../ui/history.html"),
+            include_bytes!("../ui/toast.html"),
+        ];
+        let embedded: std::collections::HashSet<&str> =
+            FILES.iter().map(|(name, _, _)| *name).collect();
+        for page in pages {
+            let html = std::str::from_utf8(page).unwrap();
+            for attr in ["src=\"", "href=\""] {
+                let mut rest = html;
+                while let Some(at) = rest.find(attr) {
+                    let after = &rest[at + attr.len()..];
+                    let end = after.find('"').expect("closing quote");
+                    let rel = &after[..end];
+                    rest = &after[end + 1..];
+                    if rel.starts_with("http:")
+                        || rel.starts_with("https:")
+                        || rel.starts_with("data:")
+                        || rel.starts_with('#')
+                    {
+                        continue;
+                    }
+                    let path = if rel.starts_with('/') {
+                        rel.to_string()
+                    } else {
+                        format!("/{rel}")
+                    };
+                    assert!(
+                        embedded.contains(path.as_str()),
+                        "ui page references {path} but FILES has no embed for it"
+                    );
+                }
+            }
+        }
     }
     #[tokio::test]
     async fn alerts_need_the_write_header_and_valid_json() {
