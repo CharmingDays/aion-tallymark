@@ -133,6 +133,7 @@ struct SettingsBody {
     boss_lock_secs: Option<u64>,
     boss_damage_threshold: Option<i64>,
     boss_engage_lock: Option<bool>,
+    open_when_aion2: Option<bool>,
 }
 
 /// Any subset of the settings. Nothing applies unless all of it is valid.
@@ -163,6 +164,9 @@ async fn settings(
     }
     if let Some(secs) = body.reset_after_secs {
         state.set_reset_after_secs(secs);
+    }
+    if let Some(on) = body.open_when_aion2 {
+        state.set_open_when_aion2(on);
     }
     StatusCode::NO_CONTENT
 }

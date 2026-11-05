@@ -332,6 +332,9 @@ pub struct SettingsView {
     pub boss_damage_threshold: i64,
     /// Keep the view on a boss while it is being fought.
     pub boss_engage_lock: bool,
+    /// Desktop shell: open the overlay when AION 2 starts (tray wait).
+    /// Combat ignores this; AppState fills it for the live view.
+    pub open_when_aion2: bool,
 }
 
 /// The live view is held on a boss that just died.
@@ -505,6 +508,7 @@ impl Combat {
             boss_lock_secs: self.lock_secs,
             boss_damage_threshold: self.boss_damage,
             boss_engage_lock: self.engage_lock,
+            open_when_aion2: false,
         }
     }
 

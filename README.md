@@ -106,7 +106,7 @@ GPL-3.0-or-later. See [LICENSE](LICENSE). Third-party notices are in [docs/third
 - Drag anywhere on the panel to move it. Resize it from the edges and corners, and the whole layout scales with the window.
 - Click (without moving) on a typed target's name to name its monster type; a press that moves still drags the window. A small *Boss* or *Dummy* badge after the name comes from the bundled names.
 - `-` and `+` (or the footer buttons) change opacity. The level is remembered.
-- Hover to show the buttons that open the detailed meter and close the overlay. Closing the overlay quits aion2dps and closes the detailed meter and history windows too.
+- Hover to show the buttons that open the detailed meter and close the overlay. Closing the overlay quits aion2dps and closes the detailed meter and history windows too. With **Open automatically when Aion 2 is detected** on (detailed meter → App), closing the overlay keeps aion2dps in the system tray instead; the overlay opens again when `AION2.exe` starts (only on that start, so closing it while the game is already running does not reopen it). Right-click the tray icon for Show overlay or Quit.
 - It stays in the taskbar, so Alt-Tab focuses it like any other window.
 
 **Detailed meter**: a top bar with the target, fight time, group total damage and group DPS; a players table (rank, name, total damage, DPS, % of group, crit %, share bar); a **Damage by skill** panel for the selected player; recent hits; finished pulls; and the reset-delay setting. The same page is served at `http://127.0.0.1:18732/` for any browser, and `/overlay` serves the compact view (useful as a stream browser source). The server listens on `127.0.0.1` only.

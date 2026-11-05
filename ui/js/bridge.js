@@ -95,6 +95,9 @@
         boss_damage_threshold: damageThreshold,
         boss_engage_lock: engageLock,
       })),
+    setOpenWhenAion2: (on) => (inApp
+      ? tauri.core.invoke('set_open_when_aion2', { on })
+      : post('/api/settings', { open_when_aion2: on })),
     unlock: () => (inApp ? tauri.core.invoke('unlock') : post('/api/unlock')),
     clearHistory: () => (inApp ? tauri.core.invoke('clear_history') : post('/api/history/clear')),
     setMonsterName: (type, name) => (inApp

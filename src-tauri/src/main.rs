@@ -2,6 +2,10 @@
 //! session history windows, on top of the passive packet engine in the
 //! `aion2dps` crate.
 //!
+//! With "Open automatically when Aion 2 is detected" on, closing the overlay
+//! keeps the app in the system tray. A process-name poll (no game interaction)
+//! shows the overlay again when `AION2.exe` starts.
+//!
 //! Event alerts fire in the meter and overlay pages and are shown in a small
 //! toast window at the top center of the primary monitor, over the game. It is
 //! opened when a toast arrives, lets clicks through except on a toast, never
@@ -11,6 +15,8 @@
 //! keeps working in a normal browser at http://127.0.0.1:18732/.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod tray_watch;
 
 use std::collections::HashMap;
 use std::env;
@@ -30,8 +36,8 @@ use aion2dps::target_debug::{self, DebugInfo, TargetDebug};
 use aion2dps::window_state::{self, Rect};
 use aion2dps::{capture, web};
 use tauri::{
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, RunEvent, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
+    AppHandle, Emitter, Listener, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, RunEvent, State,
+    WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
 const OVERLAY: &str = "overlay";
@@ -150,6 +156,11 @@ fn set_boss_settings(
 #[tauri::command]
 fn unlock(state: State<'_, Arc<AppState>>) {
     state.unlock();
+}
+
+#[tauri::command]
+fn set_open_when_aion2(state: State<'_, Arc<AppState>>, on: bool) {
+    state.set_open_when_aion2(on);
 }
 
 #[tauri::command]
@@ -462,11 +473,21 @@ fn schedule_overlay_save(app: &AppHandle) {
     });
 }
 
-/// The overlay is the main window: closing it quits the whole app, so the
-/// meter, history and toast windows close with it. Other windows only close
-/// themselves.
+/// The overlay is the main window: closing it quits the whole app (or hides to
+/// the tray when auto-open is on), so the meter, history and toast windows
+/// close with it. Other windows only close themselves.
 fn closing_quits_app(label: &str) -> bool {
     label == OVERLAY
+}
+
+/// Closing the overlay with auto-open on: stay alive in the tray instead of quitting.
+fn close_overlay_to_tray(app: &AppHandle, api: &tauri::CloseRequestApi) {
+    api.prevent_close();
+    save_overlay_rect(app);
+    if let Err(err) = tray_watch::hide_to_tray(app) {
+        tracing::warn!("could not hide to the tray: {err}");
+        app.exit(0);
+    }
 }
 fn show_meter(app: &AppHandle) -> tauri::Result<()> {
     show_page(app, METER, "index.html", "aion2dps - detailed meter")
@@ -605,6 +626,7 @@ fn main() {
         .manage(Dashboard(dashboard))
         .manage(Toasts::default())
         .manage(OverlaySaves::default())
+        .manage(tray_watch::TrayWatch::default())
         .invoke_handler(tauri::generate_handler![
             live,
             reset,
@@ -612,6 +634,7 @@ fn main() {
             set_reset_secs,
             set_boss_settings,
             unlock,
+            set_open_when_aion2,
             clear_history,
             monster_names,
             set_monster_name,
@@ -640,16 +663,22 @@ fn main() {
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                         schedule_overlay_save(window.app_handle());
                     }
-                    // Saved now: the app exits right after.
                     tauri::WindowEvent::CloseRequested { .. } => save_overlay_rect(window.app_handle()),
                     _ => {}
                 }
             }
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if closing_quits_app(window.label()) {
-                    // Exits the process: the capture, push and web server
-                    // threads stop with it.
-                    window.app_handle().exit(0);
+                    let app = window.app_handle();
+                    let state = app.state::<Arc<AppState>>();
+                    if state.open_when_aion2() {
+                        // Stay in the tray and reopen when AION 2 starts.
+                        close_overlay_to_tray(app, api);
+                    } else {
+                        // Exits the process: the capture, push and web server
+                        // threads stop with it.
+                        app.exit(0);
+                    }
                 }
             }
         })
@@ -663,6 +692,11 @@ fn main() {
             } else if !windowless {
                 show_meter(&handle)?;
             }
+            let show_handle = handle.clone();
+            handle.listen("tray-show", move |_| {
+                tray_watch::reveal_overlay(&show_handle, build_overlay);
+            });
+            tray_watch::start_watcher(handle.clone(), state.clone());
             push_snapshots(handle, state);
             Ok(())
         })

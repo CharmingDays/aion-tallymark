@@ -1,4 +1,4 @@
-//! Passive AION 2 damage meter.
+﻿//! Passive AION 2 damage meter.
 //!
 //! Combat numbers come from the server-to-client packets the game already
 //! receives. This crate never opens the game process and never reads its memory.
@@ -14,6 +14,7 @@ pub mod combat;
 pub mod decode;
 pub mod demo;
 pub mod framing;
+pub mod game_process;
 pub mod monster_names;
 pub mod reassembly;
 pub mod sessions;

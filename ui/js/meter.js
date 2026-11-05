@@ -13,6 +13,7 @@
   let settingsDirty = false;
   let bossDirty = false;
   let engageSaving = false;
+  let openWhenSaving = false;
   const bossLock = window.bossLock;
   let latest = null;
   let view = heals.view(localStorage.getItem(VIEW_KEY));
@@ -275,6 +276,9 @@
     if (data.settings && typeof data.settings.boss_engage_lock === 'boolean' && !engageSaving) {
       $('boss-engage').checked = data.settings.boss_engage_lock;
     }
+    if (data.settings && typeof data.settings.open_when_aion2 === 'boolean' && !openWhenSaving) {
+      $('open-when-aion2').checked = data.settings.open_when_aion2;
+    }
   }
 
   function lost() {
@@ -332,6 +336,22 @@
       note.textContent = 'Could not save.';
     } finally {
       engageSaving = false;
+    }
+  });
+  $('open-when-aion2').addEventListener('change', async () => {
+    const on = $('open-when-aion2').checked;
+    const note = $('app-note');
+    openWhenSaving = true;
+    try {
+      await bridge.setOpenWhenAion2(on);
+      note.textContent = on
+        ? 'Saved: close the overlay to wait in the tray for Aion 2.'
+        : 'Saved: closing the overlay quits the app.';
+    } catch (_) {
+      $('open-when-aion2').checked = !on;
+      note.textContent = 'Could not save.';
+    } finally {
+      openWhenSaving = false;
     }
   });
   $('boss-settings').addEventListener('submit', async (event) => {

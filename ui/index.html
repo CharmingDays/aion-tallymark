@@ -153,6 +153,11 @@
     <button class="btn small" type="submit">Save</button>
     <span id="boss-note" class="note"></span>
   </form>
+  <form class="settings app-only" id="app-settings">
+    <span class="group">App</span>
+    <label class="check" title="When on, closing the overlay keeps aion2dps running in the system tray. The overlay opens again when AION 2 starts. Right-click the tray icon for Show overlay or Quit. Closing the overlay while the game is already running does not reopen it until the game is started again."><input id="open-when-aion2" type="checkbox"> Open automatically when Aion 2 is detected</label>
+    <span id="app-note" class="note"></span>
+  </form>
   <div class="where">
     <button class="link app-only" id="open-browser" type="button">Open in browser</button>
     <span>127.0.0.1 only · packets only, no memory reads</span>

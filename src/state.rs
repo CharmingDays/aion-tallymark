@@ -1,6 +1,7 @@
 //! Shared meter state. The capture worker writes it. The localhost pages read it.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -61,6 +62,9 @@ pub struct Live {
 pub struct AppState {
     combat: Mutex<Combat>,
     capture: Mutex<CaptureInfo>,
+    /// When on, closing the overlay keeps the app in the tray and reopens it
+    /// when the AION 2 client starts. Desktop shell only; combat ignores it.
+    open_when_aion2: AtomicBool,
     /// Where monster names are saved. `None` keeps them in memory only.
     names_path: Option<PathBuf>,
     /// One save at a time, so the file always holds the latest table.
@@ -93,13 +97,15 @@ impl AppState {
     /// in `sessions_dir`.
     pub fn with_storage(names_path: Option<PathBuf>, sessions_dir: Option<PathBuf>) -> Self {
         let mut combat = Combat::new();
-        load_settings().apply(&mut combat);
+        let stored = load_settings();
+        stored.apply(&mut combat);
         if let Some(path) = &names_path {
             combat.set_monster_names(monster_names::load(path));
         }
         Self {
             combat: Mutex::new(combat),
             capture: Mutex::new(CaptureInfo::default()),
+            open_when_aion2: AtomicBool::new(stored.open_when_aion2),
             names_path,
             names_io: Mutex::new(()),
             sessions_dir,
@@ -228,11 +234,12 @@ impl AppState {
     }
 
     pub fn live(&self, now: i64) -> Live {
-        let (meter, settings, history) = {
+        let (meter, mut settings, history) = {
             let mut combat = self.combat.lock().unwrap_or_else(|e| e.into_inner());
             combat.tick(now);
             (combat.snapshot(now), combat.settings(), combat.history())
         };
+        settings.open_when_aion2 = self.open_when_aion2();
         Live {
             meter,
             settings,
@@ -305,9 +312,26 @@ impl AppState {
         self.with_combat(|combat| combat.unlock())
     }
 
+    /// Whether the desktop shell should wait in the tray for AION 2.
+    pub fn open_when_aion2(&self) -> bool {
+        self.open_when_aion2.load(Ordering::Relaxed)
+    }
+
+    /// Persist the tray auto-open preference. Default is off.
+    pub fn set_open_when_aion2(&self, on: bool) {
+        self.open_when_aion2.store(on, Ordering::Relaxed);
+        self.store_settings();
+    }
+
     fn store_settings(&self) {
-        let settings = self.with_combat(|combat| combat.settings());
-        store_settings(&StoredSettings::from(settings));
+        let view = self.with_combat(|combat| combat.settings());
+        store_settings(&StoredSettings {
+            reset_after_secs: view.reset_after_secs,
+            boss_lock_secs: view.boss_lock_secs,
+            boss_damage_threshold: view.boss_damage_threshold,
+            boss_engage_lock: view.boss_engage_lock,
+            open_when_aion2: self.open_when_aion2(),
+        });
     }
 
     pub fn clear_history(&self) {
@@ -330,6 +354,8 @@ struct StoredSettings {
     boss_lock_secs: u64,
     boss_damage_threshold: i64,
     boss_engage_lock: bool,
+    /// Default off: the app does not wait in the tray for the game.
+    open_when_aion2: bool,
 }
 
 impl Default for StoredSettings {
@@ -339,6 +365,7 @@ impl Default for StoredSettings {
             boss_lock_secs: DEFAULT_BOSS_LOCK_SECS,
             boss_damage_threshold: DEFAULT_BOSS_DAMAGE,
             boss_engage_lock: true,
+            open_when_aion2: false,
         }
     }
 }
@@ -350,6 +377,7 @@ impl From<SettingsView> for StoredSettings {
             boss_lock_secs: view.boss_lock_secs,
             boss_damage_threshold: view.boss_damage_threshold,
             boss_engage_lock: view.boss_engage_lock,
+            open_when_aion2: view.open_when_aion2,
         }
     }
 }
@@ -401,6 +429,7 @@ mod tests {
         assert_eq!(stored.reset_after_secs, 12);
         assert_eq!(stored.boss_lock_secs, DEFAULT_BOSS_LOCK_SECS);
         assert_eq!(stored.boss_damage_threshold, DEFAULT_BOSS_DAMAGE);
+        assert!(!stored.open_when_aion2);
     }
 
     #[test]
@@ -433,6 +462,20 @@ mod tests {
         assert!(state.set_boss_settings(Some(5), Some(0), None, 0).is_err());
         assert_eq!(state.with_combat(|c| c.settings().boss_lock_secs), before);
         assert!(!state.unlock());
+    }
+
+    #[test]
+    fn open_when_aion2_defaults_off_and_survives_other_saves() {
+        let state = AppState::with_storage(None, None);
+        assert!(!state.open_when_aion2());
+        assert!(!state.live(0).settings.open_when_aion2);
+        state.set_open_when_aion2(true);
+        assert!(state.open_when_aion2());
+        assert!(state.live(0).settings.open_when_aion2);
+        assert!(state.set_reset_after_secs(40));
+        assert!(state.open_when_aion2(), "saving the reset delay must keep the tray option");
+        state.set_open_when_aion2(false);
+        assert!(!state.open_when_aion2());
     }
 
     #[test]
