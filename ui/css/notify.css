@@ -271,3 +271,10 @@
 .ae-err { flex: 1 1 auto; min-width: 0; color: var(--danger); font-size: 12px; }
 .ae-delete { border-color: var(--danger); background: none; color: var(--danger); }
 .ae-delete:hover { border-color: var(--danger); background: rgba(248, 113, 113, 0.1); }
+
+/* Config panel (js/config-panel.js): the old footer settings, in an Alerts-style panel. */
+.config-panel .cp-group { margin: 6px 0 0; padding-top: 10px; border-top: 1px solid var(--border); color: var(--faint); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.config-panel .cp-group:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.config-panel .cp-row { flex-wrap: wrap; white-space: normal; gap: 8px; padding: 8px 0 10px; }
+.config-panel .cp-row .note { flex-basis: 100%; }
+.config-panel .cp-row .note:empty { display: none; }
