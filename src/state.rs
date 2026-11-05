@@ -392,6 +392,13 @@ impl StoredSettings {
     }
 }
 
+/// Tests never touch the real `%APPDATA%` settings file.
+#[cfg(test)]
+fn settings_path() -> Option<PathBuf> {
+    None
+}
+
+#[cfg(not(test))]
 fn settings_path() -> Option<PathBuf> {
     let base = std::env::var_os("APPDATA")?;
     Some(PathBuf::from(base).join("aion2dps").join("settings.json"))
