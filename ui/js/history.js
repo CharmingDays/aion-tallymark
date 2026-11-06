@@ -41,9 +41,8 @@
   /** "players" or "share"; the Ability share tab's scope and sort. */
   let tab = 'players';
   let shareScope = 'all';
-  /** Colour per actor index, and the local player's colour (saved in localStorage). */
-  const YOU_KEY = 'aion2dps.history.youColor';
-  let youColor = (() => { try { const c = localStorage.getItem(YOU_KEY); return playerColors.isHex(c) ? c : playerColors.YOU_DEFAULT; } catch { return playerColors.YOU_DEFAULT; } })();
+  /** Colour per actor index; local player colour comes from Config (same localStorage key). */
+  let youColor = playerColors.readYouColor();
   let colors = [];
   const pc = (i) => colors[i] || playerColors.UNKNOWN_COLOR;
   /** Which Select player list is open: 'share', 'feed' or null. */
@@ -100,19 +99,19 @@
         + (s.target.defeated ? '<span class="target-badge defeated">Defeated</span>' : '');
       const label = displayName(s);
       const custom = Boolean(s.name && String(s.name).trim());
-      const tip = custom ? `Renamed · target ${s.target.label}` : s.target.label;
+      const tip = custom ? `Renamed \u00b7 target ${s.target.label}` : s.target.label;
       if (renamingId === s.id) {
         return `<li class="session-item sel editing" data-id="${esc(s.id)}">
           <div class="session">
             <span class="s-name"><input class="s-edit" type="text" maxlength="${MAX_NAME}" value="${esc(label)}" aria-label="Session name"></span>
-            <span class="s-meta"><span>${esc(when(s.started_at))}</span><span>${clock(s.duration_ms)} · ${short(s.totals.total_damage)}</span></span>
+            <span class="s-meta"><span>${esc(when(s.started_at))}</span><span>${clock(s.duration_ms)} \u00b7 ${short(s.totals.total_damage)}</span></span>
           </div>
         </li>`;
       }
       return `<li class="session-item${s.id === selectedId ? ' sel' : ''}" data-id="${esc(s.id)}">
         <button type="button" class="session" data-id="${esc(s.id)}">
           <span class="s-name"><span class="s-label" title="${esc(tip)}">${esc(label)}</span>${badge}</span>
-          <span class="s-meta"><span>${esc(when(s.started_at))}</span><span>${clock(s.duration_ms)} · ${short(s.totals.total_damage)}</span></span>
+          <span class="s-meta"><span>${esc(when(s.started_at))}</span><span>${clock(s.duration_ms)} \u00b7 ${short(s.totals.total_damage)}</span></span>
         </button>
         <button type="button" class="s-rename" data-rename="${esc(s.id)}" title="Rename session" aria-label="Rename session">${PENCIL}</button>
       </li>`;
@@ -188,7 +187,7 @@
     const label = displayName(s);
     $('s-target').textContent = label;
     $('s-target').title = (s.name && String(s.name).trim() && s.target.label !== label)
-      ? `${label} · target ${s.target.label}`
+      ? `${label} \u00b7 target ${s.target.label}`
       : label;
     $('s-badge').textContent = kind(s.target);
     $('s-badge').hidden = !kind(s.target);
@@ -207,12 +206,12 @@
     $('s-heal').textContent = healed ? short(hacc.total) : '—';
     $('s-heal').title = healed ? full(hacc.total) : '';
     $('s-hps').textContent = healed ? `${short((hacc.total * 1000) / activeMs)}/s` : '—';
-    $('s-top').textContent = rows.length ? `${rows[0].name} · ${short((rows[0].damage * 1000) / activeMs)}/s` : '—';
+    $('s-top').textContent = rows.length ? `${rows[0].name} \u00b7 ${short((rows[0].damage * 1000) / activeMs)}/s` : '—';
   }
 
   function renderState() {
     const at = playhead <= 0 ? 'paused at start' : playhead >= span ? 'replay finished' : `paused at ${clock(playhead)}`;
-    $('when').textContent = `· ${when(session.started_at)} · ${playing ? `replaying ${speed}x` : at}`;
+    $('when').textContent = `\u00b7 ${when(session.started_at)} \u00b7 ${playing ? `replaying ${speed}x` : at}`;
     $('pb-state').textContent = playing ? 'Playing' : 'Paused';
     $('pb-state').classList.toggle('on', playing);
     $('feed-dot').classList.toggle('on', playing);
@@ -245,7 +244,7 @@
     }
     $('heal-line').setAttribute('d', healLine);
     $('heal-area').setAttribute('d', healArea);
-    $('peak').textContent = `Group DPS · peak ${short(Math.max(1, ...rates))}/s`;
+    $('peak').textContent = `Group DPS \u00b7 peak ${short(Math.max(1, ...rates))}/s`;
   }
 
   function advance(t) {
@@ -318,7 +317,7 @@
     $('heal-grid').hidden = !hasHeals;
     $('heal-controls').hidden = !hasHeals;
     if (!hasHeals) { $('roster-sub').textContent = ''; return; }
-    $('roster-sub').textContent = `Total ${hacc.total > 0 ? short(hacc.total) : '—'} · ${short((hacc.total * 1000) / activeMs)} HPS · at ${clock(playhead)}`;
+    $('roster-sub').textContent = `Total ${hacc.total > 0 ? short(hacc.total) : '—'} \u00b7 ${short((hacc.total * 1000) / activeMs)} HPS \u00b7 at ${clock(playhead)}`;
     const rows = session.actors
       .map((name, i) => ({ i, name, heal: hacc.heal[i] }))
       .filter((p) => p.heal > 0)
@@ -382,7 +381,7 @@
     const actors = shareScope === 'player' ? (who == null ? [] : [who]) : acc.skills.map((_, i) => i);
     const merged = abilityShare.merge(acc.skills, actors, session.skill_names);
     const total = merged.reduce((t, r) => t + r.damage, 0);
-    $('roster-sub').textContent = `Total damage ${total > 0 ? short(total) : '—'} · at ${clock(playhead)}`;
+    $('roster-sub').textContent = `Total damage ${total > 0 ? short(total) : '—'} \u00b7 at ${clock(playhead)}`;
     const empty = total <= 0;
     $('share-empty').hidden = !empty;
     $('share-rows').closest('table').hidden = empty;
@@ -437,23 +436,14 @@
     colors = session ? playerColors.colorsFor(session.actors, session.you == null ? null : session.you, youColor) : [];
   }
 
-  function setYouColor(c) {
-    if (!playerColors.isHex(c)) return;
-    youColor = c.toLowerCase();
-    try { localStorage.setItem(YOU_KEY, youColor); } catch { /* private mode: keep it for this window */ }
-    drawYouColor();
+  function refreshYouColor() {
+    youColor = playerColors.readYouColor();
     if (!session) return;
     paintColors();
     renderPlayers();
     renderShare(true);
     renderHeal(true);
     renderFeed(true);
-  }
-
-  function drawYouColor() {
-    $('you-color').style.setProperty('--you', youColor);
-    $('you-custom').value = youColor;
-    $('you-presets').innerHTML = playerColors.PRESETS.map((c) => `<button type="button" data-c="${c}" style="--c:${c}" class="${c === youColor ? 'on' : ''}" aria-label="${c}"></button>`).join('');
   }
 
   function setTab(next) {
@@ -582,7 +572,7 @@
     const fresh = playing ? playhead - NEW_MS * speed : Infinity;
     const who = feedFilter === 'player' ? feedPlayer() : null;
     feedLabel();
-    $('feed-sub').textContent = `at ${clock(playhead)} · ${speed}x`;
+    $('feed-sub').textContent = `at ${clock(playhead)} \u00b7 ${speed}x`;
     const rows = [];
     const target = session.target.label;
     const healList = hasHeals && feedFilter !== 'crits' && feedFilter !== 'damage' ? session.heals : [];
@@ -596,7 +586,7 @@
         const hot = flags & heals.FLAG_HOT;
         rows.push(`<li class="heal${t >= fresh ? ' new' : ''}">
         <span class="ab-time">${stamp(t)}</span>${icon(skill, name)}
-        <span class="ab-text"><span class="ab-name">${esc(name)}${hot ? ' · tick' : ''}</span><span class="ab-who"><span class="pname" style="--pc:${pc(actor)}">${esc(session.actors[actor] || UNKNOWN)}</span></span></span>
+        <span class="ab-text"><span class="ab-name">${esc(name)}${hot ? ' \u00b7 tick' : ''}</span><span class="ab-who"><span class="pname" style="--pc:${pc(actor)}">${esc(session.actors[actor] || UNKNOWN)}</span></span></span>
         <span class="ab-heal-tag">HEAL</span><span class="ab-dmg heal" title="${full(amount)}">+${full(amount)}</span>
       </li>`);
         continue;
@@ -657,7 +647,7 @@
       body.innerHTML = '<tr class="empty-row"><td colspan="7">No damage yet at this point.</td></tr>';
       return;
     }
-    sub.textContent = `${rows.length} ${rows.length === 1 ? 'player' : 'players'} · at ${clock(playhead)}`;
+    sub.textContent = `${rows.length} ${rows.length === 1 ? 'player' : 'players'} \u00b7 at ${clock(playhead)}`;
     const top = Math.max(1, rows[0].damage);
     body.innerHTML = rows.map((p, i) => `<tr data-actor="${p.i}" style="--pc:${pc(p.i)}" class="player${p.name === UNKNOWN ? ' unknown' : ''}${p.i === selectedActor ? ' sel' : ''}${expanded.has(p.i) ? ' open' : ''}">
         <td class="rank">${i + 1}</td>
@@ -902,22 +892,8 @@
     document.querySelectorAll('#feed-filters > button').forEach((other) => other.classList.toggle('on', other === b));
     if (session) renderFeed(true);
   }));
-  drawYouColor();
-  const colorPop = (open) => {
-    $('you-color-pop').hidden = !open;
-    $('you-color').setAttribute('aria-expanded', String(open));
-  };
-  $('you-color').addEventListener('click', () => colorPop($('you-color-pop').hidden));
-  $('you-presets').addEventListener('click', (event) => {
-    const b = event.target.closest('button[data-c]');
-    if (b) setYouColor(b.dataset.c);
-  });
-  $('you-custom').addEventListener('input', (event) => setYouColor(event.target.value));
-  $('you-color-pop').addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') { event.preventDefault(); colorPop(false); $('you-color').focus(); }
-  });
-  document.addEventListener('mousedown', (event) => {
-    if (!event.target.closest('#you-color-wrap')) colorPop(false);
+  window.addEventListener('storage', (event) => {
+    if (event.key === playerColors.YOU_KEY) refreshYouColor();
   });
   window.addEventListener('keydown', (event) => {
     if (event.code !== 'Space' || !session || event.target.closest('input, button, textarea, [role="option"]')) return;

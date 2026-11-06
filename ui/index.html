@@ -20,7 +20,7 @@
     <span class="target-badge" id="target-badge" hidden></span>
     <span class="target-badge defeated" id="target-defeated" hidden>Defeated</span>
     <button type="button" class="lock-chip" id="lock-chip" hidden></button>
-    <span class="state" id="state">· idle</span>
+    <span class="state" id="state">&#183; idle</span>
     <span class="ended" id="ended" hidden>Fight ended - resets in <span id="ended-secs">30</span>s</span>
   </div>
   <div class="stats">
@@ -159,6 +159,16 @@
     <span id="app-note" class="note"></span>
   </form>
   </div>
+  <h3 class="cp-group">Appearance</h3>
+  <form class="settings cp-row" id="appearance-settings" onsubmit="return false;">
+    <label class="you-color-row" title="Colour of your name in the overlay and in session history.">Your color
+      <span class="you-color-controls">
+        <span class="swatches" id="you-presets"></span>
+        <input type="color" id="you-custom" aria-label="Custom colour">
+      </span>
+    </label>
+    <span id="appearance-note" class="note"></span>
+  </form>
   <div class="cp-foot"><span id="config-note" class="cp-status" aria-live="polite"></span><button class="btn small cp-save" id="config-save" type="button" disabled>Save</button></div>
 </section>
 <footer class="statusbar">
@@ -167,7 +177,7 @@
   <div id="debug-note" class="debug-note" hidden></div>
   <div class="where">
     <button class="link app-only" id="open-browser" type="button">Open in browser</button>
-    <span>127.0.0.1 only · packets only, no memory reads</span>
+    <span>127.0.0.1 only &#183; packets only, no memory reads</span>
   </div>
 </footer>
 <script src="js/format.js"></script>
@@ -179,6 +189,7 @@
 <script src="js/toast-queue.js"></script>
 <script src="js/notify.js"></script>
 <script src="js/alerts-panel.js"></script>
+<script src="js/player-colors.js"></script>
 <script src="js/config-panel.js"></script>
 <script src="js/heal-share.js"></script>
 <script src="js/npcap-help.js"></script>

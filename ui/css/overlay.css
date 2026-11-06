@@ -179,6 +179,12 @@ body {
 .seg button:hover { color: var(--text); }
 .seg button.on { background: var(--accent-hl); color: var(--accent); font-weight: 600; }
 .seg button.heal.on { background: var(--heal-hl); color: var(--heal); }
+.seg .seg-short { display: none; }
+.seg .seg-full { display: inline; }
+body.narrow-sm .seg button { padding: 0.2rem 0.4rem; }
+body.narrow-sm .seg .seg-full { display: none; }
+body.narrow-sm .seg .seg-short { display: inline; }
+
 .timer { flex: 0 0 auto; font-size: 1.1rem; font-weight: 500; color: var(--muted); }
 
 .tools { flex: 0 0 auto; display: none; gap: 0.3rem; }
@@ -282,7 +288,6 @@ body {
 }
 .row.you { background: var(--accent-hl); }
 .row.heal.you { background: rgba(74, 222, 128, 0.1); }
-.row.heal.you .name { color: var(--heal); }
 .row.heal .dmg { font-weight: 600; }
 .row.heal .bar > i { background: var(--heal); opacity: 0.55; }
 .row.heal.you .bar > i { opacity: 1; }
@@ -297,12 +302,14 @@ body {
   z-index: 1;
   font-size: 1.15rem;
   font-weight: 500;
+  color: var(--pc, var(--text));
   white-space: nowrap;
   overflow: clip;
   text-overflow: ellipsis;
 }
-.row.you .name { color: var(--accent); font-weight: 600; }
-.row.unknown .name { color: var(--faint); font-style: italic; }
+.row.you .name { color: var(--pc, var(--accent)); font-weight: 600; }
+.row.unknown .name { color: var(--pc, var(--faint)); font-style: italic; }
+.row.heal.you .name { color: var(--pc, var(--heal)); }
 .dmg, .dps, .pct {
   z-index: 1;
   font-size: 1.1rem;
@@ -379,7 +386,6 @@ body:not(.in-app) .app-only { display: none !important; }
 @media (max-width: 210px) {
   .row { grid-template-columns: 1.1rem minmax(0, 1fr) auto; }
   .dmg { display: none; }
-  .seg { display: none; }
 }
 body.narrow-sm .tags,
 body.narrow-sm .timer { display: none; }
@@ -388,5 +394,4 @@ body.narrow-xs .row { grid-template-columns: 1.1rem minmax(0, 1fr) auto auto; }
 body.narrow-xs .pct { display: none; }
 body.narrow-xxs .row { grid-template-columns: 1.1rem minmax(0, 1fr) auto; }
 body.narrow-xxs .dmg { display: none; }
-body.narrow-xxs .seg { display: none; }
 

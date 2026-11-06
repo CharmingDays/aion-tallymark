@@ -107,9 +107,13 @@ fn minus_and_plus_change_overlay_opacity_and_the_layout_scales() {
 #[test]
 fn compact_overlay_keeps_five_rows_at_the_minimum() {
     assert!(OVERLAY_JS.contains("const DESIGN_WIDTH = 280"));
+    assert!(OVERLAY_JS.contains("const DESIGN_HEIGHT = 168"));
     assert!(OVERLAY_JS.contains("const ROW_PITCH_REM = 1.9"));
     assert!(OVERLAY_CSS.contains("height: 1.8rem"));
     assert!(OVERLAY_HTML.contains("id=\"hit-top\""));
+    assert!(OVERLAY_HTML.contains("class=\"seg-short\""));
+    assert!(OVERLAY_CSS.contains("body.narrow-sm .seg .seg-short"));
+    assert!(!OVERLAY_CSS.contains("body.narrow-xxs .seg { display: none"));
     assert!(!OVERLAY_JS.contains("class=\"avatar\""));
     assert!(APP_MAIN.contains("overlay_layout::MIN_SIZE"));
     assert!(APP_MAIN.contains("overlay_layout::DEFAULT_SIZE"));
@@ -251,7 +255,7 @@ fn both_pages_save_the_session_and_the_meter_opens_the_history() {
     // Compact layout: lock/defeated chips live inside the header hit-top row.
     assert!(OVERLAY_HTML.contains("id=\"hit-top\""));
     assert!(OVERLAY_HTML.contains("id=\"lock-chip\"") && OVERLAY_HTML.contains("id=\"target-defeated\""));
-    assert!(OVERLAY_JS.contains("`Session saved · ${clock(summary.duration_ms)}`"));
+    assert!(OVERLAY_JS.contains(r"`Session saved \u00b7 ${clock(summary.duration_ms)}`"));
 
     for page in [METER_HTML, OVERLAY_HTML] {
         assert!(page.contains("<script src=\"js/session-save.js\"></script>"));
@@ -325,4 +329,27 @@ fn line_containing<'a>(page: &'a str, needle: &str) -> &'a str {
     page.lines()
         .find(|line| line.contains(needle))
         .unwrap_or_else(|| panic!("missing {needle}"))
+}
+
+
+#[test]
+fn ui_pages_declare_utf8_charset_and_avoid_literal_middots() {
+    for page in [METER_HTML, OVERLAY_HTML, HISTORY_HTML] {
+        assert!(
+            page.contains("<meta charset=\"utf-8\">"),
+            "every UI HTML page needs an explicit UTF-8 charset"
+        );
+        assert!(
+            !page.contains('\u{00b7}'),
+            "literal U+00B7 middots mojibake when a shell omits charset; use &#183;"
+        );
+    }
+    assert!(OVERLAY_HTML.contains("&#183;"), "overlay separator uses an ASCII-safe entity");
+    assert!(OVERLAY_JS.contains(r"\u00b7"), "overlay JS middots use \\u00b7 escapes");
+    assert!(
+        WEB_RS.contains("text/html; charset=utf-8"),
+        "localhost server must advertise UTF-8 on HTML"
+    );
+    assert!(WEB_RS.contains("text/css; charset=utf-8"));
+    assert!(WEB_RS.contains("text/javascript; charset=utf-8"));
 }

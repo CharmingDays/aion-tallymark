@@ -10,7 +10,8 @@
 
   // Match src/overlay_layout.rs (DESIGN_WIDTH / rem floor / row pitch).
   const DESIGN_WIDTH = 280;
-  const MIN_HEIGHT = 220; // default design height; window min is overlay_layout::MIN_SIZE
+  // Match overlay_layout::DEFAULT_SIZE.1 so rem stays 10px at the snug default.
+  const DESIGN_HEIGHT = 168;
   const REM_FLOOR = 0.95; // 9.5px at design 10px rem
   const ROW_PITCH_REM = 1.9;
   const ROWS_PADDING_REM = 0.5;
@@ -19,6 +20,7 @@
   const OPACITY_KEY = 'aion2dps.opacity';
   const VIEW_KEY = 'aion2dps.overlay.view';
   const heals = window.healShare;
+  const playerColors = window.playerColors;
   const STEP = 0.1;
   const MIN_LEVEL = 0.2;
   const MAX_LEVEL = 1;
@@ -50,7 +52,7 @@
   const saving = window.sessionSave.create($('save-session'), {
     save: () => bridge.saveSession(),
     onSaved: (summary) => {
-      $('foot-note').textContent = `Session saved · ${clock(summary.duration_ms)}`;
+      $('foot-note').textContent = `Session saved \u00b7 ${clock(summary.duration_ms)}`;
       hintUntil = Date.now() + window.sessionSave.SAVED_MS;
     },
   });
@@ -66,7 +68,7 @@
   }
 
   function scale() {
-    const s = Math.min(innerWidth / DESIGN_WIDTH, innerHeight / MIN_HEIGHT);
+    const s = Math.min(innerWidth / DESIGN_WIDTH, innerHeight / DESIGN_HEIGHT);
     const px = 10 * Math.min(4, Math.max(REM_FLOOR, s));
     document.documentElement.style.fontSize = `${px.toFixed(2)}px`;
     document.body.classList.toggle('narrow-sm', innerWidth <= 260);
@@ -156,13 +158,21 @@
     const you = players.find((p) => p.you);
     if (you && !shown.includes(you)) shown[shown.length - 1] = you;
     const top = Math.max(1, players[0].damage);
+    const youIdx = players.findIndex((p) => p.you);
+    const palette = playerColors.colorsFor(
+      players.map((p) => p.name),
+      youIdx >= 0 ? youIdx : null,
+      playerColors.readYouColor(),
+    );
     box.innerHTML = shown.map((p) => {
       const cls = ['row'];
       if (p.you) cls.push('you');
       if (p.name === UNKNOWN) cls.push('unknown');
       const width = Math.round((p.damage / top) * 1000) / 10;
-      return `<div class="${cls.join(' ')}">
-        <span class="rank">${players.indexOf(p) + 1}</span>
+      const pi = players.indexOf(p);
+      const color = palette[pi] || playerColors.UNKNOWN_COLOR;
+      return `<div class="${cls.join(' ')}" style="--pc:${color}">
+        <span class="rank">${pi + 1}</span>
         <span class="name">${esc(p.name)}${p.heal > 0 ? `<b class="heal-badge">${heals.badge(p.heal, short)}</b>` : ''}</span>
         <span class="dmg">${short(p.damage)}</span>
         <span class="dps">${short(p.dps)}</span>
@@ -183,12 +193,20 @@
     const shown = rows.slice(0, rowCapacity(box));
     const you = rows.find((h) => h.you);
     if (you && !shown.includes(you)) shown[shown.length - 1] = you;
+    const youIdx = rows.findIndex((h) => h.you);
+    const palette = playerColors.colorsFor(
+      rows.map((h) => h.name),
+      youIdx >= 0 ? youIdx : null,
+      playerColors.readYouColor(),
+    );
     box.innerHTML = shown.map((h) => {
       const cls = ['row', 'heal'];
       if (h.you) cls.push('you');
       if (h.name === UNKNOWN) cls.push('unknown');
-      return `<div class="${cls.join(' ')}">
-        <span class="rank">${rows.indexOf(h) + 1}</span>
+      const hi = rows.indexOf(h);
+      const color = palette[hi] || playerColors.UNKNOWN_COLOR;
+      return `<div class="${cls.join(' ')}" style="--pc:${color}">
+        <span class="rank">${hi + 1}</span>
         <span class="name">${esc(h.name)}</span>
         <span class="dmg">${short(h.heal)}</span>
         <span class="dps">${short(h.hps)}</span>
@@ -317,6 +335,9 @@
     }, POINTER_MS);
   }
 
+  window.addEventListener('storage', (event) => {
+    if (event.key === playerColors.YOU_KEY && latest) render(latest);
+  });
   scale();
   paintOpacity();
   bridge.subscribe(render, showError);

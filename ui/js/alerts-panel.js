@@ -80,7 +80,7 @@
         ? list.map((a) => `<li class="${a.enabled === false ? 'off' : ''}">
             <button type="button" class="switch${a.enabled === false ? '' : ' on'}" data-toggle="${esc(a.id)}" aria-label="Enable ${esc(a.name)}"></button>
             <span class="ev-text"><span class="ev-name" title="${esc(a.message || a.name)}">${esc(a.name)}</span>
-            <span class="ev-when">${a.enabled === false ? 'Off' : `Next: ${esc(whenText(sched.nextAt(a, now, settings)))}`} · ${esc(sched.repeatShort(a))}</span></span>
+            <span class="ev-when">${a.enabled === false ? 'Off' : `Next: ${esc(whenText(sched.nextAt(a, now, settings)))}`} \u00b7 ${esc(sched.repeatShort(a))}</span></span>
             <button type="button" class="ev-icon" data-edit="${esc(a.id)}" title="Edit">${ICON_EDIT}</button>
             <button type="button" class="ev-icon ev-del" data-del="${esc(a.id)}" title="Delete">${ICON_TRASH}</button></li>`).join('')
         : '<li class="ap-empty" style="background:none;padding:2px 0">No events yet. Add one below.</li>';

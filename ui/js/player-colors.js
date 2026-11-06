@@ -1,9 +1,11 @@
-﻿// Player colours for the session history replay: one distinct colour per
+// Player colours for the session history replay: one distinct colour per
 // player name, with the local player ("you") on their own chosen colour.
 (function (root) {
   'use strict';
 
   const YOU_DEFAULT = '#4ade80';
+  /** Kept as history.youColor for backward compatibility. */
+  const YOU_KEY = 'aion2dps.history.youColor';
   const PALETTE = ['#60a5fa', '#f472b6', '#facc15', '#a78bfa', '#fb923c', '#22d3ee', '#f87171', '#2dd4bf', '#e879f9', '#fbbf24', '#93c5fd', '#fda4af'];
   const PRESETS = ['#4ade80', '#60a5fa', '#f472b6', '#facc15', '#a78bfa', '#fb923c', '#22d3ee', '#f87171'];
   const UNKNOWN_COLOR = '#6b7280';
@@ -16,6 +18,22 @@
   }
 
   const isHex = (c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
+
+  function readYouColor() {
+    try {
+      const c = localStorage.getItem(YOU_KEY);
+      return isHex(c) ? c.toLowerCase() : YOU_DEFAULT;
+    } catch (_) {
+      return YOU_DEFAULT;
+    }
+  }
+
+  function writeYouColor(c) {
+    if (!isHex(c)) return readYouColor();
+    const next = c.toLowerCase();
+    try { localStorage.setItem(YOU_KEY, next); } catch (_) { /* private mode */ }
+    return next;
+  }
 
   /**
    * Colours for `actors` (names, by index). Each name starts at a hashed
@@ -53,7 +71,7 @@
     return rows.map(([actor, damage]) => ({ actor, damage, pct: (damage / sum) * 100, width: (damage / sum) * width }));
   }
 
-  const api = { YOU_DEFAULT, PALETTE, PRESETS, UNKNOWN_COLOR, isHex, colorsFor, segments };
+  const api = { YOU_DEFAULT, YOU_KEY, PALETTE, PRESETS, UNKNOWN_COLOR, isHex, readYouColor, writeYouColor, colorsFor, segments, hash };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.playerColors = api;
 })(typeof window !== 'undefined' ? window : globalThis);

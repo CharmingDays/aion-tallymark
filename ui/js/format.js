@@ -67,7 +67,7 @@
     if (!d) return '';
     if (d.error) return `Target debug log failed: ${d.error} (${d.path})`;
     const state = d.full ? 'full, stopped' : `${d.records} records`;
-    return `Target debug log on · ${state} · ${d.path}`;
+    return `Target debug log on \u00b7 ${state} \u00b7 ${d.path}`;
   }
 
   window.fmt = { UNKNOWN, MONSTER, BOSS, esc, short, full, clock, pct, rate, fightState, debugNote };

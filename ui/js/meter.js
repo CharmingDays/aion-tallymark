@@ -47,7 +47,7 @@
     if (!targetEl.title) targetEl.title = f.target;
     paintBoss(m);
     const state = $('state');
-    state.textContent = f.live ? '· live' : f.hasFight ? '· paused' : '· idle';
+    state.textContent = f.live ? '\u00b7 live' : f.hasFight ? '\u00b7 paused' : '\u00b7 idle';
     state.className = f.live ? 'state live' : 'state';
     state.hidden = f.ended;
     $('ended').hidden = !f.ended;
@@ -78,7 +78,7 @@
       return;
     }
     const targets = m.targets_shown === 1 ? '1 target' : `${m.targets_shown} targets`;
-    $('players-sub').textContent = `${players.length} ${players.length === 1 ? 'player' : 'players'} · ${targets}`;
+    $('players-sub').textContent = `${players.length} ${players.length === 1 ? 'player' : 'players'} \u00b7 ${targets}`;
     const top = Math.max(1, players[0].damage);
     body.innerHTML = players.map((p, i) => {
       const cls = [nameClass(p.name, p.you), p.id === selected ? 'sel' : ''].filter(Boolean).join(' ');
@@ -157,7 +157,7 @@
     $('heal-feed-head').textContent = `Heal feed (healer: ${healer.name})`;
     const rows = heals.feed(m.recent, healer.id);
     $('heal-feed').innerHTML = rows.length ? rows.map((r) => `
-      <li><span class="tag heal-tag">HEAL</span><span class="feed-skill" title="Skill ${r.skill}">${esc(r.skill_name)}${r.dot ? ' · tick' : ''}</span><span class="heal-amount">+${full(r.amount)}</span></li>`).join('')
+      <li><span class="tag heal-tag">HEAL</span><span class="feed-skill" title="Skill ${r.skill}">${esc(r.skill_name)}${r.dot ? ' \u00b7 tick' : ''}</span><span class="heal-amount">+${full(r.amount)}</span></li>`).join('')
       : '<li class="empty">No healing recorded yet</li>';
   }
 
@@ -193,7 +193,7 @@
           <span class="skill-pct">${player.damage > 0 ? pct(s.damage / player.damage, 1) : '—'}</span>
         </div>
         <div class="skill-bar"><i style="width:${Math.round((s.damage / top) * 1000) / 10}%"></i></div>
-        <div class="skill-meta">${full(s.hits)} hits · crit ${rate(s.crits, s.hits)} · back ${rate(s.backs, s.hits)} · perfect ${rate(s.perfects, s.hits)} · double ${rate(s.doubles, s.hits)}</div>
+        <div class="skill-meta">${full(s.hits)} hits \u00b7 crit ${rate(s.crits, s.hits)} \u00b7 back ${rate(s.backs, s.hits)} \u00b7 perfect ${rate(s.perfects, s.hits)} \u00b7 double ${rate(s.doubles, s.hits)}</div>
       </div>`).join('');
   }
 
@@ -233,7 +233,7 @@
     }
     cap.className = 'capture good';
     const port = c.locked_port == null ? 'looking for the game' : `server port ${c.locked_port}`;
-    cap.textContent = `${c.running ? 'Capture on' : 'Capture off'} · ${c.demo ? 'demo data' : port} · ${full(c.hits)} hits · ${full(c.segments)} segments · ${full(c.drops)} dropped`;
+    cap.textContent = `${c.running ? 'Capture on' : 'Capture off'} \u00b7 ${c.demo ? 'demo data' : port} \u00b7 ${full(c.hits)} hits \u00b7 ${full(c.segments)} segments \u00b7 ${full(c.drops)} dropped`;
   }
 
   function render(data) {
@@ -267,6 +267,27 @@
     if (!configDirty && !configSaving && data.settings) loadConfig(data.settings);
   }
 
+  const pcApi = window.playerColors;
+  let youColor = pcApi.readYouColor();
+  let youColorDirty = false;
+
+  function drawYouColor() {
+    const presets = $('you-presets');
+    if (!presets) return;
+    $('you-custom').value = youColor;
+    presets.innerHTML = pcApi.PRESETS.map((c) =>
+      `<button type="button" data-c="${c}" style="--c:${c}" class="${c === youColor ? 'on' : ''}" aria-label="${c}"></button>`
+    ).join('');
+  }
+
+  function pickYouColor(c) {
+    if (!pcApi.isHex(c)) return;
+    youColor = c.toLowerCase();
+    youColorDirty = true;
+    drawYouColor();
+    setDirty(true);
+  }
+
   function loadConfig(s) {
     if (s.reset_after_secs != null) $('reset-secs').value = s.reset_after_secs;
     if (s.boss_lock_secs != null) {
@@ -276,6 +297,9 @@
     if (typeof s.boss_engage_lock === 'boolean') $('boss-engage').checked = s.boss_engage_lock;
     if (typeof s.open_when_aion2 === 'boolean') $('open-when-aion2').checked = s.open_when_aion2;
     if (typeof s.overlay_click_through === 'boolean') $('overlay-click-through').checked = s.overlay_click_through;
+    youColor = pcApi.readYouColor();
+    youColorDirty = false;
+    drawYouColor();
   }
 
   function lost() {
@@ -307,7 +331,7 @@
   const saveBtn = $('config-save');
   const configNote = $('config-note');
   let savedTimer = null;
-  const notes = ['settings-note', 'boss-note', 'app-note'];
+  const notes = ['settings-note', 'boss-note', 'app-note', 'appearance-note'];
   function setDirty(on) {
     configDirty = on;
     saveBtn.disabled = !on || configSaving;
@@ -315,6 +339,12 @@
   }
   ['reset-secs', 'boss-lock-secs', 'boss-damage'].forEach((id) => $(id).addEventListener('input', () => setDirty(true)));
   ['boss-engage', 'open-when-aion2', 'overlay-click-through'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
+  drawYouColor();
+  $('you-presets').addEventListener('click', (event) => {
+    const b = event.target.closest('button[data-c]');
+    if (b) pickYouColor(b.dataset.c);
+  });
+  $('you-custom').addEventListener('input', (event) => pickYouColor(event.target.value));
   // Closing the panel discards unsaved edits; the next open shows the saved values.
   document.addEventListener('config:closed', () => {
     setDirty(false);
@@ -360,6 +390,10 @@
         await bridge.setOverlayClickThrough(clickThrough);
       } catch (_) { failed = true; $('app-note').textContent = 'Could not save.'; }
     }
+    if (youColorDirty) {
+      youColor = pcApi.writeYouColor(youColor);
+      youColorDirty = false;
+    }
     configSaving = false;
     clearTimeout(savedTimer);
     if (failed) {
@@ -377,7 +411,7 @@
   }
   saveBtn.addEventListener('click', saveConfig);
   // Enter in a field saves the whole panel too.
-  ['settings', 'boss-settings', 'app-settings'].forEach((id) => $(id).addEventListener('submit', (event) => {
+  ['settings', 'boss-settings', 'app-settings', 'appearance-settings'].forEach((id) => $(id).addEventListener('submit', (event) => {
     event.preventDefault();
     saveConfig();
   }));

@@ -6,9 +6,10 @@
 /// Design width used by the overlay's rem scaling (1rem = 10px at this width).
 pub const DESIGN_WIDTH: f64 = 280.0;
 /// Default window size when no saved rect exists.
-pub const DEFAULT_SIZE: (f64, f64) = (320.0, 230.0);
+/// Height fits header + totals + five rows + status with little spare room.
+pub const DEFAULT_SIZE: (f64, f64) = (320.0, 168.0);
 /// Smallest the user can shrink the overlay (logical CSS pixels).
-pub const MIN_SIZE: (f64, f64) = (200.0, 170.0);
+pub const MIN_SIZE: (f64, f64) = (200.0, 160.0);
 /// Row pitch in CSS px when the root font-size is 10px (1.8rem row + 0.1rem gap).
 pub const ROW_PITCH_PX: f64 = 19.0;
 /// Header + slim summary + status + paddings at 10px rem, without tags.
@@ -41,6 +42,13 @@ mod tests {
             REM_FLOOR_PX,
             row_capacity(MIN_SIZE.1, REM_FLOOR_PX)
         );
+    }
+
+    #[test]
+    fn default_size_fits_five_rows_snugly_at_design_rem() {
+        assert_eq!(row_capacity(DEFAULT_SIZE.1, 10.0), 5);
+        // One row of slack at most (no big empty band under the list).
+        assert!(row_capacity(DEFAULT_SIZE.1 + ROW_PITCH_PX, 10.0) >= 6);
     }
 
     #[test]

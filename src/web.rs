@@ -550,6 +550,21 @@ mod tests {
     }
 
     #[test]
+    fn ui_text_assets_advertise_utf8_charset() {
+        assert_eq!(HTML, "text/html; charset=utf-8");
+        assert_eq!(CSS, "text/css; charset=utf-8");
+        assert_eq!(JS, "text/javascript; charset=utf-8");
+        for html in [
+            include_str!("../ui/index.html"),
+            include_str!("../ui/overlay.html"),
+            include_str!("../ui/history.html"),
+            include_str!("../ui/toast.html"),
+        ] {
+            assert!(html.contains("<meta charset=\"utf-8\">"));
+        }
+    }
+
+    #[test]
     fn every_ui_page_asset_is_embedded() {
         // Keeps the localhost server in sync with <script>/<link> tags in ui/*.html.
         // A missing entry 404s in the browser and can abort meter.js before live data paints.
