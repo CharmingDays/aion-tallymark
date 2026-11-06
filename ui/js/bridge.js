@@ -98,6 +98,13 @@
     setOpenWhenAion2: (on) => (inApp
       ? tauri.core.invoke('set_open_when_aion2', { on })
       : post('/api/settings', { open_when_aion2: on })),
+    setOverlayClickThrough: (on) => (inApp
+      ? tauri.core.invoke('set_overlay_click_through', { on })
+      : post('/api/settings', { overlay_click_through: on })),
+    /** Overlay CSS-pixel pointer, or null when unavailable. */
+    overlayPointer: () => (inApp ? tauri.core.invoke('overlay_pointer') : Promise.resolve(null)),
+    /** Capture clicks (true) or let them through to the game (false). */
+    overlayHit: (capture) => (inApp ? tauri.core.invoke('overlay_hit', { capture }) : Promise.resolve()),
     unlock: () => (inApp ? tauri.core.invoke('unlock') : post('/api/unlock')),
     clearHistory: () => (inApp ? tauri.core.invoke('clear_history') : post('/api/history/clear')),
     setMonsterName: (type, name) => (inApp

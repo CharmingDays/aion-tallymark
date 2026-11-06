@@ -1,6 +1,8 @@
 // Compact always-on-top overlay. -/+ (keys or footer buttons) change opacity,
 // the layout scales with the window, and a press on the card moves the window.
 // A click that does not move on a typed target's name opens the name editor.
+// With click-through on (default), the body lets clicks reach the game; the
+// top bar and a thin edge for resizing stay interactive (same pattern as toasts).
 (function () {
   const { esc, short, clock, fightState, debugNote, UNKNOWN } = window.fmt;
   const bridge = window.meterBridge;
@@ -31,6 +33,10 @@
   let latest = null;
   let hintUntil = 0;
   let press = null;
+  let clickThrough = true;
+  let capturing = true;
+  let holding = false;
+  let topBarPx = 48;
 
   if (bridge.inApp) document.body.classList.add('in-app');
 
@@ -97,6 +103,10 @@
 
   function render(data) {
     latest = data;
+    if (data.settings && typeof data.settings.overlay_click_through === 'boolean') {
+      clickThrough = data.settings.overlay_click_through;
+      if (!clickThrough) applyCapture(true);
+    }
     const m = data.meter;
     const f = fightState(data);
 
@@ -213,6 +223,7 @@
 
   $('card').addEventListener('mousedown', (event) => {
     if (event.button !== 0 || event.target.closest('button, .rz, .name-edit, .seg')) return;
+    if (event.target.closest('#drag-grip')) { bridge.startDrag(); return; }
     if (event.target.closest('#target') && naming.clickable()) {
       press = { x: event.screenX, y: event.screenY };
       return;
@@ -262,6 +273,51 @@
     scale();
     if (latest) render(latest);
   });
+
+
+  // Click-through: poll the global cursor (ignore_cursor_events blocks DOM
+  // mouseenter). Top bar + EDGE_PX border stay interactive; holding the mouse
+  // keeps capture so a drag can leave the bar.
+  const EDGE_PX = 8;
+  const POINTER_MS = 33;
+
+  function measureTopBar() {
+    const el = $('hit-top');
+    if (!el) return;
+    topBarPx = Math.ceil(el.getBoundingClientRect().height) || topBarPx;
+  }
+
+  function wantsCapture(x, y) {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (!clickThrough || holding) return true;
+    if (x < 0 || y < 0 || x >= w || y >= h) return false;
+    if (y < topBarPx) return true;
+    return x < EDGE_PX || x >= w - EDGE_PX || y >= h - EDGE_PX;
+  }
+
+  function applyCapture(next) {
+    if (next === capturing) return;
+    capturing = next;
+    bridge.overlayHit(next).catch(() => {});
+  }
+
+  if (bridge.inApp) {
+    window.addEventListener('mousedown', (event) => {
+      if (event.button === 0) holding = true;
+    });
+    window.addEventListener('mouseup', () => { holding = false; });
+    window.addEventListener('blur', () => { holding = false; });
+    measureTopBar();
+    setInterval(async () => {
+      measureTopBar();
+      if (!clickThrough) { applyCapture(true); return; }
+      let p = null;
+      try { p = await bridge.overlayPointer(); } catch (_) { return; }
+      if (!p) { applyCapture(true); return; }
+      applyCapture(wantsCapture(p[0], p[1]));
+    }, POINTER_MS);
+  }
 
   scale();
   paintOpacity();

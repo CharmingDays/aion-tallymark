@@ -75,6 +75,15 @@ fn the_overlay_window_stays_transparent_frameless_and_on_top() {
     );
     assert!(OVERLAY_JS.contains("bridge.startDrag()"));
     assert!(OVERLAY_JS.contains("bridge.startResize("));
+    assert!(OVERLAY_HTML.contains("id=\"hit-top\""));
+    assert!(OVERLAY_HTML.contains("id=\"drag-grip\""));
+    assert!(OVERLAY_JS.contains("bridge.overlayPointer()"));
+    assert!(OVERLAY_JS.contains("bridge.overlayHit("));
+    assert!(APP_MAIN.contains("fn overlay_pointer("));
+    assert!(APP_MAIN.contains("fn overlay_hit("));
+    assert!(APP_MAIN.contains("set_ignore_cursor_events"));
+    assert!(METER_HTML.contains("id=\"overlay-click-through\""));
+    assert!(BRIDGE_JS.contains("set_overlay_click_through"));
     assert!(TAURI_CONF.contains("\"withGlobalTauri\": true"));
 }
 

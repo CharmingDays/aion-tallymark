@@ -65,6 +65,9 @@ pub struct AppState {
     /// When on, closing the overlay keeps the app in the tray and reopens it
     /// when the AION 2 client starts. Desktop shell only; combat ignores it.
     open_when_aion2: AtomicBool,
+    /// When on, the overlay body lets clicks through to the game; the top bar
+    /// and resize edges stay interactive. Desktop shell only.
+    overlay_click_through: AtomicBool,
     /// Where monster names are saved. `None` keeps them in memory only.
     names_path: Option<PathBuf>,
     /// One save at a time, so the file always holds the latest table.
@@ -106,6 +109,7 @@ impl AppState {
             combat: Mutex::new(combat),
             capture: Mutex::new(CaptureInfo::default()),
             open_when_aion2: AtomicBool::new(stored.open_when_aion2),
+            overlay_click_through: AtomicBool::new(stored.overlay_click_through),
             names_path,
             names_io: Mutex::new(()),
             sessions_dir,
@@ -247,6 +251,7 @@ impl AppState {
             (combat.snapshot(now), combat.settings(), combat.history())
         };
         settings.open_when_aion2 = self.open_when_aion2();
+        settings.overlay_click_through = self.overlay_click_through();
         Live {
             meter,
             settings,
@@ -330,6 +335,17 @@ impl AppState {
         self.store_settings();
     }
 
+    /// Whether the overlay body should ignore the mouse (top bar stays live).
+    pub fn overlay_click_through(&self) -> bool {
+        self.overlay_click_through.load(Ordering::Relaxed)
+    }
+
+    /// Persist overlay click-through. Default is on.
+    pub fn set_overlay_click_through(&self, on: bool) {
+        self.overlay_click_through.store(on, Ordering::Relaxed);
+        self.store_settings();
+    }
+
     fn store_settings(&self) {
         let view = self.with_combat(|combat| combat.settings());
         store_settings(&StoredSettings {
@@ -338,6 +354,7 @@ impl AppState {
             boss_damage_threshold: view.boss_damage_threshold,
             boss_engage_lock: view.boss_engage_lock,
             open_when_aion2: self.open_when_aion2(),
+            overlay_click_through: self.overlay_click_through(),
         });
     }
 
@@ -363,6 +380,8 @@ struct StoredSettings {
     boss_engage_lock: bool,
     /// Default off: the app does not wait in the tray for the game.
     open_when_aion2: bool,
+    /// Default on: overlay body is click-through.
+    overlay_click_through: bool,
 }
 
 impl Default for StoredSettings {
@@ -373,6 +392,7 @@ impl Default for StoredSettings {
             boss_damage_threshold: DEFAULT_BOSS_DAMAGE,
             boss_engage_lock: true,
             open_when_aion2: false,
+            overlay_click_through: true,
         }
     }
 }
@@ -385,6 +405,7 @@ impl From<SettingsView> for StoredSettings {
             boss_damage_threshold: view.boss_damage_threshold,
             boss_engage_lock: view.boss_engage_lock,
             open_when_aion2: view.open_when_aion2,
+            overlay_click_through: view.overlay_click_through,
         }
     }
 }
@@ -444,6 +465,7 @@ mod tests {
         assert_eq!(stored.boss_lock_secs, DEFAULT_BOSS_LOCK_SECS);
         assert_eq!(stored.boss_damage_threshold, DEFAULT_BOSS_DAMAGE);
         assert!(!stored.open_when_aion2);
+        assert!(stored.overlay_click_through);
     }
 
     #[test]
@@ -490,6 +512,20 @@ mod tests {
         assert!(state.open_when_aion2(), "saving the reset delay must keep the tray option");
         state.set_open_when_aion2(false);
         assert!(!state.open_when_aion2());
+    }
+
+    #[test]
+    fn overlay_click_through_defaults_on_and_survives_other_saves() {
+        let state = AppState::with_storage(None, None);
+        assert!(state.overlay_click_through());
+        assert!(state.live(0).settings.overlay_click_through);
+        state.set_overlay_click_through(false);
+        assert!(!state.overlay_click_through());
+        assert!(!state.live(0).settings.overlay_click_through);
+        assert!(state.set_reset_after_secs(40));
+        assert!(!state.overlay_click_through(), "saving the reset delay must keep click-through");
+        state.set_overlay_click_through(true);
+        assert!(state.overlay_click_through());
     }
 
     #[test]

@@ -11,6 +11,9 @@
 //! opened when a toast arrives, lets clicks through except on a toast, never
 //! takes focus, and closes when its last toast is gone.
 //!
+//! With overlay click-through on (default), the compact overlay body also lets
+//! clicks through to the game; the top bar and a thin resize edge stay live.
+//!
 //! The same engine state also backs the localhost page, so the detailed meter
 //! keeps working in a normal browser at http://127.0.0.1:18732/.
 
@@ -161,6 +164,26 @@ fn unlock(state: State<'_, Arc<AppState>>) {
 #[tauri::command]
 fn set_open_when_aion2(state: State<'_, Arc<AppState>>, on: bool) {
     state.set_open_when_aion2(on);
+}
+
+#[tauri::command]
+fn set_overlay_click_through(state: State<'_, Arc<AppState>>, on: bool) {
+    state.set_overlay_click_through(on);
+}
+
+/// The mouse pointer in the overlay's own CSS pixels (same idea as toast_pointer).
+#[tauri::command]
+fn overlay_pointer(window: WebviewWindow) -> Option<(f64, f64)> {
+    let cursor = window.cursor_position().ok()?;
+    let origin = window.inner_position().ok()?;
+    let scale = window.scale_factor().ok()?;
+    Some(((cursor.x - f64::from(origin.x)) / scale, (cursor.y - f64::from(origin.y)) / scale))
+}
+
+/// Capture clicks on the overlay (`true`) or let them reach the game (`false`).
+#[tauri::command]
+fn overlay_hit(window: WebviewWindow, capture: bool) {
+    let _ = window.set_ignore_cursor_events(!capture);
 }
 
 #[tauri::command]
@@ -647,6 +670,9 @@ fn main() {
             set_boss_settings,
             unlock,
             set_open_when_aion2,
+            set_overlay_click_through,
+            overlay_pointer,
+            overlay_hit,
             clear_history,
             monster_names,
             set_monster_name,

@@ -11,7 +11,9 @@
 <body>
 <div class="card" id="card">
   <div class="content">
+    <div class="hit-top" id="hit-top">
     <header class="head">
+      <span class="drag-grip app-only" id="drag-grip" title="Drag to move" aria-hidden="true"><i></i><i></i></span>
       <span class="dot" id="dot"></span>
       <span class="target" id="target">Waiting for combat</span>
       <span class="seg" id="view" role="group" aria-label="Show">
@@ -39,6 +41,7 @@
       <span class="target-badge" id="target-badge" hidden></span>
       <span class="target-badge defeated" id="target-defeated" hidden>Defeated</span>
       <button type="button" class="lock-chip" id="lock-chip" hidden></button>
+    </div>
     </div>
     <div class="banner" id="banner" hidden>Fight ended - resets in <span id="banner-secs">30</span>s</div>
     <section class="summary">

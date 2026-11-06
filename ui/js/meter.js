@@ -275,6 +275,7 @@
     }
     if (typeof s.boss_engage_lock === 'boolean') $('boss-engage').checked = s.boss_engage_lock;
     if (typeof s.open_when_aion2 === 'boolean') $('open-when-aion2').checked = s.open_when_aion2;
+    if (typeof s.overlay_click_through === 'boolean') $('overlay-click-through').checked = s.overlay_click_through;
   }
 
   function lost() {
@@ -313,7 +314,7 @@
     if (on) { clearTimeout(savedTimer); configNote.textContent = ''; configNote.className = 'cp-status'; }
   }
   ['reset-secs', 'boss-lock-secs', 'boss-damage'].forEach((id) => $(id).addEventListener('input', () => setDirty(true)));
-  ['boss-engage', 'open-when-aion2'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
+  ['boss-engage', 'open-when-aion2', 'overlay-click-through'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
   // Closing the panel discards unsaved edits; the next open shows the saved values.
   document.addEventListener('config:closed', () => {
     setDirty(false);
@@ -333,6 +334,7 @@
     if (!damage.ok) { $('boss-note').textContent = damage.error; return; }
     const engage = $('boss-engage').checked;
     const openWhen = $('open-when-aion2').checked;
+    const clickThrough = $('overlay-click-through').checked;
     configSaving = true;
     saveBtn.disabled = true;
     let failed = false;
@@ -351,6 +353,11 @@
         $('app-note').textContent = openWhen
           ? 'Close the overlay to wait in the tray for Aion 2.'
           : 'Closing the overlay quits the app.';
+      } catch (_) { failed = true; $('app-note').textContent = 'Could not save.'; }
+    }
+    if (bridge.inApp && clickThrough !== s.overlay_click_through) {
+      try {
+        await bridge.setOverlayClickThrough(clickThrough);
       } catch (_) { failed = true; $('app-note').textContent = 'Could not save.'; }
     }
     configSaving = false;

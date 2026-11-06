@@ -335,6 +335,9 @@ pub struct SettingsView {
     /// Desktop shell: open the overlay when AION 2 starts (tray wait).
     /// Combat ignores this; AppState fills it for the live view.
     pub open_when_aion2: bool,
+    /// Desktop shell: overlay body click-through (top bar stays interactive).
+    /// Combat ignores this; AppState fills it for the live view.
+    pub overlay_click_through: bool,
 }
 
 /// The live view is held on a boss that just died.
@@ -509,6 +512,7 @@ impl Combat {
             boss_damage_threshold: self.boss_damage,
             boss_engage_lock: self.engage_lock,
             open_when_aion2: false,
+            overlay_click_through: true,
         }
     }
 

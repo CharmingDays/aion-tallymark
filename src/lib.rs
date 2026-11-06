@@ -1,4 +1,4 @@
-﻿//! Passive AION 2 damage meter.
+//! Passive AION 2 damage meter.
 //!
 //! Combat numbers come from the server-to-client packets the game already
 //! receives. This crate never opens the game process and never reads its memory.
@@ -23,6 +23,7 @@ pub mod death_debug;
 pub mod spawn_debug;
 pub mod state;
 pub mod storage;
+pub mod overlay_hit;
 pub mod window_state;
 pub mod target_debug;
 pub mod varint;
