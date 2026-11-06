@@ -11,7 +11,7 @@
   // Match src/overlay_layout.rs (DESIGN_WIDTH / rem floor / row pitch).
   const DESIGN_WIDTH = 280;
   // Match overlay_layout::DEFAULT_SIZE.1 so rem stays 10px at the snug default.
-  const DESIGN_HEIGHT = 168;
+  const DESIGN_HEIGHT = 180;
   const REM_FLOOR = 0.95; // 9.5px at design 10px rem
   const ROW_PITCH_REM = 1.9;
   const ROWS_PADDING_REM = 0.5;

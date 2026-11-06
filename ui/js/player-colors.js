@@ -6,7 +6,7 @@
   const YOU_DEFAULT = '#4ade80';
   /** Kept as history.youColor for backward compatibility. */
   const YOU_KEY = 'aion2dps.history.youColor';
-  const PALETTE = ['#60a5fa', '#f472b6', '#facc15', '#a78bfa', '#fb923c', '#22d3ee', '#f87171', '#2dd4bf', '#e879f9', '#fbbf24', '#93c5fd', '#fda4af'];
+  const PALETTE = ['#60a5fa', '#f472b6', '#facc15', '#a78bfa', '#fb923c', '#22d3ee', '#f87171', '#2dd4bf', '#e879f9'];
   const PRESETS = ['#4ade80', '#60a5fa', '#f472b6', '#facc15', '#a78bfa', '#fb923c', '#22d3ee', '#f87171'];
   const UNKNOWN_COLOR = '#6b7280';
 

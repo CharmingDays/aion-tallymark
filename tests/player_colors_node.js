@@ -6,6 +6,10 @@ assert.strictEqual(pc.YOU_KEY, 'aion2dps.history.youColor');
 assert.ok(pc.isHex(pc.YOU_DEFAULT));
 assert.ok(pc.PALETTE.every((c) => pc.isHex(c)));
 assert.ok(!pc.PALETTE.includes(pc.YOU_DEFAULT), 'default you colour stays off the other-player palette');
+assert.ok(!pc.PALETTE.includes('#93c5fd') && !pc.PALETTE.includes('#fbbf24') && !pc.PALETTE.includes('#fda4af'),
+  'near-duplicate palette colours were removed');
+assert.strictEqual(pc.PALETTE.length, 9);
+
 
 const actors = ['Aria', 'Borin', 'Cyra', 'Dax', 'You'];
 const you = 4;

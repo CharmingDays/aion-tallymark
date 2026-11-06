@@ -107,7 +107,7 @@ fn minus_and_plus_change_overlay_opacity_and_the_layout_scales() {
 #[test]
 fn compact_overlay_keeps_five_rows_at_the_minimum() {
     assert!(OVERLAY_JS.contains("const DESIGN_WIDTH = 280"));
-    assert!(OVERLAY_JS.contains("const DESIGN_HEIGHT = 168"));
+    assert!(OVERLAY_JS.contains("const DESIGN_HEIGHT = 180"));
     assert!(OVERLAY_JS.contains("const ROW_PITCH_REM = 1.9"));
     assert!(OVERLAY_CSS.contains("height: 1.8rem"));
     assert!(OVERLAY_HTML.contains("id=\"hit-top\""));

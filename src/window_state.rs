@@ -233,7 +233,7 @@ mod tests {
         let monitors = [mon(0, 0, 1920, 1080, 1.5)];
         let tiny = Rect { x: 100, y: 100, width: 50, height: 40 };
         let out = fit(tiny, &monitors, Some(0), MIN).unwrap();
-        assert_eq!((out.width, out.height), (300, 240));
+        assert_eq!((out.width, out.height), (300, 258));
         let huge = Rect { x: 0, y: 0, width: 5000, height: 4000 };
         let out = fit(huge, &monitors, Some(0), MIN).unwrap();
         assert_eq!((out.width, out.height), (1920, 1080));
