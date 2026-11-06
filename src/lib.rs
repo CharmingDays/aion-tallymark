@@ -24,6 +24,7 @@ pub mod spawn_debug;
 pub mod state;
 pub mod storage;
 pub mod overlay_hit;
+pub mod overlay_layout;
 pub mod window_state;
 pub mod target_debug;
 pub mod varint;

@@ -1,18 +1,19 @@
-// Compact always-on-top overlay. -/+ (keys or footer buttons) change opacity,
-// the layout scales with the window, and a press on the card moves the window.
-// A click that does not move on a typed target's name opens the name editor.
-// With click-through on (default), the body lets clicks reach the game; the
-// top bar and a thin edge for resizing stay interactive (same pattern as toasts).
+// Compact always-on-top overlay. -/+ keys change opacity; the layout scales
+// with the window; a press on the card moves it. A click that does not move on
+// a typed target's name opens the name editor. With click-through on (default),
+// the body lets clicks reach the game; the top bar and a thin edge for resizing
+// stay interactive (same pattern as toasts).
 (function () {
   const { esc, short, clock, fightState, debugNote, UNKNOWN } = window.fmt;
   const bridge = window.meterBridge;
   const $ = (id) => document.getElementById(id);
 
-  const DESIGN_WIDTH = 360;
-  /** Height that still fits the header, summary, footer and a row or two. */
-  const MIN_HEIGHT = 230;
-  const ROW_PITCH_REM = 3.7;
-  const ROWS_PADDING_REM = 1.0;
+  // Match src/overlay_layout.rs (DESIGN_WIDTH / rem floor / row pitch).
+  const DESIGN_WIDTH = 280;
+  const MIN_HEIGHT = 220; // default design height; window min is overlay_layout::MIN_SIZE
+  const REM_FLOOR = 0.95; // 9.5px at design 10px rem
+  const ROW_PITCH_REM = 1.9;
+  const ROWS_PADDING_REM = 0.5;
   const MAX_ROWS = 12;
 
   const OPACITY_KEY = 'aion2dps.opacity';
@@ -66,16 +67,17 @@
 
   function scale() {
     const s = Math.min(innerWidth / DESIGN_WIDTH, innerHeight / MIN_HEIGHT);
-    const px = 10 * Math.min(4, Math.max(0.6, s));
+    const px = 10 * Math.min(4, Math.max(REM_FLOOR, s));
     document.documentElement.style.fontSize = `${px.toFixed(2)}px`;
+    document.body.classList.toggle('narrow-sm', innerWidth <= 260);
+    document.body.classList.toggle('narrow-xs', innerWidth <= 240);
+    document.body.classList.toggle('narrow-xxs', innerWidth <= 210);
   }
 
   function paintOpacity() {
     const card = $('card');
     card.style.setProperty('--overlay-alpha', (PANEL_ALPHA * level).toFixed(3));
     card.style.setProperty('--content-opacity', (0.4 + 0.6 * level).toFixed(3));
-    $('less').disabled = level <= MIN_LEVEL + 1e-6;
-    $('more').disabled = level >= MAX_LEVEL - 1e-6;
     localStorage.setItem(OPACITY_KEY, level.toFixed(1));
   }
 
@@ -161,7 +163,6 @@
       const width = Math.round((p.damage / top) * 1000) / 10;
       return `<div class="${cls.join(' ')}">
         <span class="rank">${players.indexOf(p) + 1}</span>
-        <span class="avatar"></span>
         <span class="name">${esc(p.name)}${p.heal > 0 ? `<b class="heal-badge">${heals.badge(p.heal, short)}</b>` : ''}</span>
         <span class="dmg">${short(p.damage)}</span>
         <span class="dps">${short(p.dps)}</span>
@@ -188,7 +189,6 @@
       if (h.name === UNKNOWN) cls.push('unknown');
       return `<div class="${cls.join(' ')}">
         <span class="rank">${rows.indexOf(h) + 1}</span>
-        <span class="avatar"></span>
         <span class="name">${esc(h.name)}</span>
         <span class="dmg">${short(h.heal)}</span>
         <span class="dps">${short(h.hps)}</span>
@@ -260,8 +260,6 @@
   // Same as Reset fight in the detailed meter: ends any boss lock and archives the fight.
   $('reset').addEventListener('click', () => bridge.reset().catch(showError));
   $('open-meter').addEventListener('click', () => bridge.openMeter());
-  $('less').addEventListener('click', () => stepOpacity(-1));
-  $('more').addEventListener('click', () => stepOpacity(1));
   window.addEventListener('keydown', (event) => {
     if (event.ctrlKey || event.altKey || event.metaKey || naming.editing()) return;
     if (event.key === '-' || event.code === 'NumpadSubtract') stepOpacity(-1);

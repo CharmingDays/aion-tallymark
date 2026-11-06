@@ -58,7 +58,7 @@ const TOAST_MARGIN: f64 = 36.0;
 /// The meter and the overlay both fire each alert; the second copy is dropped.
 const TOAST_DEDUP: Duration = Duration::from_secs(5);
 /// The overlay's logical minimum size; a restored size never goes below it.
-const OVERLAY_MIN: (f64, f64) = (220.0, 150.0);
+const OVERLAY_MIN: (f64, f64) = aion2dps::overlay_layout::MIN_SIZE;
 /// The overlay's rect is written this long after the last move or resize.
 const OVERLAY_SAVE_DELAY: Duration = Duration::from_millis(500);
 /// How often a combat snapshot is pushed to the windows as a `live` event.
@@ -419,7 +419,7 @@ fn open_npcap_page() {
 fn build_overlay(app: &AppHandle) -> tauri::Result<()> {
     let window = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("overlay.html".into()))
         .title("aion2dps")
-        .inner_size(360.0, 400.0)
+        .inner_size(aion2dps::overlay_layout::DEFAULT_SIZE.0, aion2dps::overlay_layout::DEFAULT_SIZE.1)
         .min_inner_size(OVERLAY_MIN.0, OVERLAY_MIN.1)
         // Hidden until the saved position and size are applied, so it does
         // not appear at the default spot and then jump.

@@ -89,17 +89,30 @@ fn the_overlay_window_stays_transparent_frameless_and_on_top() {
 
 #[test]
 fn minus_and_plus_change_overlay_opacity_and_the_layout_scales() {
-    assert!(OVERLAY_HTML.contains("id=\"less\""));
-    assert!(OVERLAY_HTML.contains("id=\"more\""));
+    // Opacity is keyboard-only (-/+); the dense footer no longer hosts buttons.
+    assert!(!OVERLAY_HTML.contains("id=\"less\""), "footer opacity buttons removed");
+    assert!(!OVERLAY_HTML.contains("id=\"more\""), "footer opacity buttons removed");
     assert!(OVERLAY_JS.contains("event.key === '-'"));
     assert!(OVERLAY_JS.contains("event.key === '+'"));
     assert!(OVERLAY_JS.contains("--overlay-alpha"));
     assert!(OVERLAY_JS.contains("innerWidth / DESIGN_WIDTH"));
     assert!(OVERLAY_JS.contains("documentElement.style.fontSize"));
+    assert!(OVERLAY_JS.contains("const DESIGN_WIDTH = 280"));
     assert!(
         !METER_HTML.contains("id=\"less\""),
         "opacity is changed on the overlay, not the detailed page"
     );
+}
+
+#[test]
+fn compact_overlay_keeps_five_rows_at_the_minimum() {
+    assert!(OVERLAY_JS.contains("const DESIGN_WIDTH = 280"));
+    assert!(OVERLAY_JS.contains("const ROW_PITCH_REM = 1.9"));
+    assert!(OVERLAY_CSS.contains("height: 1.8rem"));
+    assert!(OVERLAY_HTML.contains("id=\"hit-top\""));
+    assert!(!OVERLAY_JS.contains("class=\"avatar\""));
+    assert!(APP_MAIN.contains("overlay_layout::MIN_SIZE"));
+    assert!(APP_MAIN.contains("overlay_layout::DEFAULT_SIZE"));
 }
 
 #[test]
@@ -145,7 +158,7 @@ fn the_design_tokens_and_local_font_are_used() {
 
 #[test]
 fn the_idle_countdown_follows_the_engine_reset_delay() {
-    assert!(OVERLAY_HTML.contains("Fight ended - resets in"));
+    assert!(OVERLAY_HTML.contains("Fight ended") && OVERLAY_HTML.contains("resets in"));
     assert!(FORMAT_JS.contains("m.reset_in_ms"));
     assert!(FORMAT_JS.contains("reset_after_secs"));
     assert!(OVERLAY_JS.contains("Damage kept ${f.resetSecs}s after kill"));
@@ -235,8 +248,9 @@ fn both_pages_save_the_session_and_the_meter_opens_the_history() {
     assert!(OVERLAY_HTML.find("id=\"save-session\"").unwrap() > timer, "save comes after the timer");
     assert!(!OVERLAY_HTML.contains("id=\"open-history\""), "history opens from the detailed meter only");
     assert!(!OVERLAY_JS.contains("openHistory"));
-    let tags = &OVERLAY_HTML[OVERLAY_HTML.find("</header>").unwrap()..];
-    assert!(tags.contains("id=\"lock-chip\"") && tags.contains("id=\"target-defeated\""), "boss tags sit below the header row");
+    // Compact layout: lock/defeated chips live inside the header hit-top row.
+    assert!(OVERLAY_HTML.contains("id=\"hit-top\""));
+    assert!(OVERLAY_HTML.contains("id=\"lock-chip\"") && OVERLAY_HTML.contains("id=\"target-defeated\""));
     assert!(OVERLAY_JS.contains("`Session saved · ${clock(summary.duration_ms)}`"));
 
     for page in [METER_HTML, OVERLAY_HTML] {

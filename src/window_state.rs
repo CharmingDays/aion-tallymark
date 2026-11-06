@@ -152,7 +152,7 @@ pub fn fit(rect: Rect, monitors: &[Monitor], primary: Option<usize>, min_logical
 mod tests {
     use super::*;
 
-    const MIN: (f64, f64) = (220.0, 150.0);
+    const MIN: (f64, f64) = crate::overlay_layout::MIN_SIZE;
 
     fn mon(x: i32, y: i32, w: u32, h: u32, scale: f64) -> Monitor {
         Monitor { rect: Rect { x, y, width: w, height: h }, scale }
@@ -233,7 +233,7 @@ mod tests {
         let monitors = [mon(0, 0, 1920, 1080, 1.5)];
         let tiny = Rect { x: 100, y: 100, width: 50, height: 40 };
         let out = fit(tiny, &monitors, Some(0), MIN).unwrap();
-        assert_eq!((out.width, out.height), (330, 225));
+        assert_eq!((out.width, out.height), (300, 255));
         let huge = Rect { x: 0, y: 0, width: 5000, height: 4000 };
         let out = fit(huge, &monitors, Some(0), MIN).unwrap();
         assert_eq!((out.width, out.height), (1920, 1080));

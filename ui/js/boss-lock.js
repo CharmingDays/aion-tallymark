@@ -1,4 +1,4 @@
-// Boss lock and boss settings: the "Locked 8s" chip text, the Defeated badge
+// Boss lock and boss settings: the "Lock 8s" chip text, the Defeated badge
 // and the checks on the Boss settings fields. No DOM, so it can be tested.
 //
 // While a boss holds the view, the meter's snapshot carries
@@ -12,11 +12,11 @@
   const MIN_BOSS_DAMAGE = 1000;
   const MAX_BOSS_DAMAGE = 1e12;
 
-  /** "Locked 8s", rounded up so it never reads 0s while still locked. */
+  /** Compact chip label ("8s" / "On"); full wording lives on the title. */
   function chipText(lock) {
     if (!lock) return '';
-    if (lock.engaged) return 'Locked on boss';
-    return `Locked ${Math.max(0, Math.ceil((lock.remaining_ms || 0) / 1000))}s`;
+    if (lock.engaged) return 'On';
+    return `${Math.max(0, Math.ceil((lock.remaining_ms || 0) / 1000))}s`;
   }
 
   function chipTitle(lock) {

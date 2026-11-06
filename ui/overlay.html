@@ -12,54 +12,48 @@
 <div class="card" id="card">
   <div class="content">
     <div class="hit-top" id="hit-top">
-    <header class="head">
-      <span class="drag-grip app-only" id="drag-grip" title="Drag to move" aria-hidden="true"><i></i><i></i></span>
-      <span class="dot" id="dot"></span>
-      <span class="target" id="target">Waiting for combat</span>
-      <span class="seg" id="view" role="group" aria-label="Show">
-        <button type="button" data-view="damage" class="on">Damage</button>
-        <button type="button" data-view="heal" class="heal">Heal</button>
-      </span>
-      <span class="timer" id="timer">00:00</span>
-      <button class="tool save app-only" id="save-session" type="button" title="Save session" disabled>
-        <svg class="idle" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7M4.8 6.6 8 9.8l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <svg class="done" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.4 6.4 11.6 12.8 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <button class="tool reset" id="reset" type="button" title="Reset fight">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.4 8a5.4 5.4 0 1 1-1.6-3.8M13.4 2.6v2.8h-2.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <span class="tools app-only">
-        <button class="tool" id="open-meter" type="button" title="Open the detailed meter">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9 2h5v5M14 2 8 8M12 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <header class="head">
+        <span class="drag-grip app-only" id="drag-grip" title="Drag to move" aria-hidden="true"><i></i><i></i></span>
+        <span class="dot" id="dot"></span>
+        <span class="target" id="target">Waiting for combat</span>
+        <span class="tags" id="tags">
+          <span class="target-badge" id="target-badge" hidden></span>
+          <span class="target-badge defeated" id="target-defeated" hidden>Defeated</span>
+          <button type="button" class="lock-chip" id="lock-chip" hidden></button>
+        </span>
+        <span class="seg" id="view" role="group" aria-label="Show">
+          <button type="button" data-view="damage" class="on">Dmg</button>
+          <button type="button" data-view="heal" class="heal">Heal</button>
+        </span>
+        <span class="timer" id="timer">00:00</span>
+        <button class="tool save app-only" id="save-session" type="button" title="Save session" disabled>
+          <svg class="idle" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7M4.8 6.6 8 9.8l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="done" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.4 6.4 11.6 12.8 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <button class="tool" id="close" type="button" title="Close the overlay">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <button class="tool reset" id="reset" type="button" title="Reset fight">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.4 8a5.4 5.4 0 1 1-1.6-3.8M13.4 2.6v2.8h-2.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-      </span>
-    </header>
-    <div class="tags" id="tags">
-      <span class="target-badge" id="target-badge" hidden></span>
-      <span class="target-badge defeated" id="target-defeated" hidden>Defeated</span>
-      <button type="button" class="lock-chip" id="lock-chip" hidden></button>
+        <span class="tools app-only">
+          <button class="tool" id="open-meter" type="button" title="Open the detailed meter">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9 2h5v5M14 2 8 8M12 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="tool" id="close" type="button" title="Close the overlay">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </span>
+      </header>
     </div>
-    </div>
-    <div class="banner" id="banner" hidden>Fight ended - resets in <span id="banner-secs">30</span>s</div>
+    <div class="banner" id="banner" hidden>Fight ended · resets in <span id="banner-secs">30</span>s</div>
     <section class="summary">
-      <div>
-        <div class="label" id="total-label">Group total damage</div>
-        <div class="value" id="total">0</div>
-      </div>
-      <div>
-        <div class="label" id="dps-label">Group DPS</div>
-        <div class="value" id="dps">0/s</div>
-      </div>
+      <span class="label" id="total-label">Group total damage</span>
+      <span class="value" id="total">0</span>
+      <span class="sep" aria-hidden="true">·</span>
+      <span class="label" id="dps-label">Group DPS</span>
+      <span class="value" id="dps">0/s</span>
     </section>
     <div class="rows empty" id="rows">Waiting for combat</div>
     <div class="debug-note" id="debug-note" hidden></div>
-    <footer class="foot">
-      <span id="foot-note">Idle reset in 30s</span>
-      <span id="opacity-hint"><button id="less" type="button" title="Less opaque (- key)">-</button>/<button id="more" type="button" title="More opaque (+ key)">+</button> opacity</span>
-    </footer>
+    <div class="status" id="foot-note">Idle reset in 30s</div>
   </div>
   <div class="rz n app-only" data-dir="North"></div>
   <div class="rz s app-only" data-dir="South"></div>
