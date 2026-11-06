@@ -1,6 +1,6 @@
 {
   "name": "aion2dps",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Passive AION 2 damage meter (Tauri v2 shell). The frontend in ui/ is plain HTML/CSS/JS with no build step.",
   "license": "GPL-3.0-or-later",
