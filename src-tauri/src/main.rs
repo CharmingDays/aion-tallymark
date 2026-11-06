@@ -209,6 +209,18 @@ async fn delete_session(app: AppHandle, state: State<'_, Arc<AppState>>, id: Str
     Ok(())
 }
 
+#[tauri::command]
+async fn rename_session(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    name: String,
+) -> Result<Summary, String> {
+    let summary = state.rename_session(&id, &name).map_err(|err| err.to_string())?;
+    let _ = app.emit(SESSIONS_CHANGED, ());
+    Ok(summary)
+}
+
 /// Toasts on their way to the screen toast window.
 #[derive(Default)]
 struct Toasts {
@@ -642,6 +654,7 @@ fn main() {
             list_sessions,
             get_session,
             delete_session,
+            rename_session,
             get_alerts,
             set_alerts,
             restore_default_alerts,

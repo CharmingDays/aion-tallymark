@@ -87,7 +87,7 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> std::io::Result<u16> {
         .route("/api/monster-name", post(set_monster_name))
         .route("/api/session/save", post(save_session))
         .route("/api/sessions", get(list_sessions))
-        .route("/api/sessions/:id", get(get_session).delete(delete_session))
+        .route("/api/sessions/:id", get(get_session).patch(rename_session).delete(delete_session))
         .route("/api/sessions/:id/export", get(export_session))
         .route("/api/alerts", get(get_alerts).put(put_alerts))
         .route("/api/alerts/restore-defaults", post(restore_default_alerts))
@@ -312,6 +312,30 @@ async fn delete_session(
     }
 }
 
+#[derive(Deserialize)]
+struct RenameBody {
+    name: String,
+}
+
+/// Set or clear a session's custom name. Empty clears it back to the target label.
+async fn rename_session(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Err(rejected) = check_write(&headers, &body) {
+        return rejected;
+    }
+    let Ok(body) = serde_json::from_slice::<RenameBody>(&body) else {
+        return (StatusCode::BAD_REQUEST, "expected {\"name\": <text>}").into_response();
+    };
+    match state.rename_session(&id, &body.name) {
+        Ok(summary) => Json(summary).into_response(),
+        Err(err) => session_error(err),
+    }
+}
+
 async fn get_alerts(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     ([(header::CACHE_CONTROL, "no-store")], Json(state.alerts()))
 }
@@ -479,6 +503,24 @@ mod tests {
             format!("attachment; filename=\"{id}.json\"").as_str()
         );
 
+                let rename = |headers: HeaderMap, body: &str| {
+            rename_session(
+                State(state.clone()),
+                Path(id.clone()),
+                headers,
+                Bytes::from(body.to_string()),
+            )
+        };
+        assert_eq!(rename(headers(Some("application/json"), None), r#"{"name":"x"}"#).await.status(), StatusCode::FORBIDDEN);
+        assert_eq!(rename(headers(Some("text/plain"), Some("1")), r#"{"name":"x"}"#).await.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        let renamed = rename(headers(Some("application/json"), Some("1")), r#"{"name":"  Clear run  "}"#).await;
+        assert_eq!(renamed.status(), StatusCode::OK);
+        let renamed: sessions::Summary = serde_json::from_str(&text(renamed).await).unwrap();
+        assert_eq!(renamed.name.as_deref(), Some("Clear run"));
+        assert_eq!(renamed.label(), "Clear run");
+        let listed = text(list_sessions(State(state.clone())).await.into_response()).await;
+        assert!(listed.contains("Clear run"), "{listed}");
+
         for bad in ["..", "../x", "..\\x", "x.json", "a/b", ""] {
             let got = get_session(State(state.clone()), Path(bad.to_string())).await;
             assert_eq!(got.status(), StatusCode::BAD_REQUEST, "{bad}");
@@ -487,6 +529,8 @@ mod tests {
             assert_eq!(export.status(), StatusCode::BAD_REQUEST, "{bad}");
             let deleted = delete_session(State(state.clone()), Path(bad.to_string()), write(), Bytes::new());
             assert_eq!(deleted.await.status(), StatusCode::BAD_REQUEST, "{bad}");
+            let ren = rename_session(State(state.clone()), Path(bad.to_string()), headers(Some("application/json"), Some("1")), Bytes::from(r#"{"name":"x"}"#));
+            assert_eq!(ren.await.status(), StatusCode::BAD_REQUEST, "{bad}");
         }
         let missing = get_session(State(state.clone()), Path("nope".into())).await;
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);

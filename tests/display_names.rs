@@ -260,7 +260,9 @@ fn the_history_window_lists_replays_and_deletes_sessions() {
     assert!(HISTORY_HTML.contains("class=\"btn danger\" id=\"delete\""));
     assert!(HISTORY_HTML.contains(">Delete session</button>"));
     assert!(HISTORY_CSS.contains(".btn.danger { color: var(--danger); }"));
-    assert!(HISTORY_CSS.contains(".session.sel"));
+    assert!(HISTORY_CSS.contains(".session-item.sel"));
+    assert!(HISTORY_CSS.contains(".s-rename"));
+    assert!(HISTORY_CSS.contains(".s-edit"));
     for heading in ["RANK", "NAME", "TOTAL DAMAGE", "DPS", "% OF GROUP", "CRIT %", "SHARE"] {
         assert!(HISTORY_HTML.contains(&format!("<th>{heading}</th>")), "missing column {heading}");
     }
@@ -272,13 +274,17 @@ fn the_history_window_lists_replays_and_deletes_sessions() {
     assert!(HISTORY_JS.contains("if (playhead >= span) pause();"), "playback stops at the end");
     assert!(HISTORY_JS.contains("if (!confirm("), "delete asks first");
     assert!(HISTORY_JS.contains("<span class=\"name\">${esc(p.name)}</span>"));
-    assert!(HISTORY_JS.contains("${esc(s.target.label)}"));
+    assert!(HISTORY_JS.contains("const displayName = "));
+    assert!(HISTORY_JS.contains("bridge.renameSession"));
+    assert!(HISTORY_JS.contains("data-rename="));
+    assert!(HISTORY_JS.contains("class=\"s-edit\""));
 
     assert!(BRIDGE_JS.contains("post('/api/session/save', null, WRITE)"));
     assert!(BRIDGE_JS.contains("send('DELETE', sessionPath(id), null, WRITE)"));
+    assert!(BRIDGE_JS.contains("send('PATCH', sessionPath(id), { name }, WRITE)"));
     assert!(BRIDGE_JS.contains("get('/api/sessions')"));
     assert!(BRIDGE_JS.contains("`${sessionPath(id)}/export`"));
-    for command in ["save_session", "list_sessions", "get_session", "delete_session", "open_history"] {
+    for command in ["save_session", "list_sessions", "get_session", "delete_session", "rename_session", "open_history"] {
         assert!(BRIDGE_JS.contains(&format!("invoke('{command}'")), "bridge calls {command}");
         assert!(APP_MAIN.contains(&format!("fn {command}(")), "app has {command}");
     }

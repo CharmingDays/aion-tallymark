@@ -1571,6 +1571,7 @@ impl Combat {
             heals,
             events,
             truncated: self.events_truncated,
+            name: None,
         })
     }
 

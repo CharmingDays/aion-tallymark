@@ -68,6 +68,11 @@
   const when = (ms) => new Date(ms).toLocaleString([], {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
+  /** Custom name when set, otherwise the target label. */
+  const displayName = (s) => (s && s.name && String(s.name).trim()) || (s && s.target && s.target.label) || '';
+  const MAX_NAME = 60;
+  const PENCIL = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M11.7 1.3a1.5 1.5 0 0 1 2.1 2.1l-.7.7-2.1-2.1.7-.7zm-1.4 1.4 2.1 2.1-7.4 7.4H3v-2.1l7.3-7.4z"/></svg>';
+  let renamingId = null;
 
   function note(message) {
     $('action-note').textContent = message;
@@ -93,11 +98,32 @@
     $('sessions').innerHTML = summaries.map((s) => {
       const badge = (kind(s.target) ? `<span class="target-badge">${kind(s.target)}</span>` : '')
         + (s.target.defeated ? '<span class="target-badge defeated">Defeated</span>' : '');
-      return `<li><button type="button" class="session${s.id === selectedId ? ' sel' : ''}" data-id="${esc(s.id)}">
-        <span class="s-name"><span>${esc(s.target.label)}</span>${badge}</span>
-        <span class="s-meta"><span>${esc(when(s.started_at))}</span><span>${clock(s.duration_ms)} · ${short(s.totals.total_damage)}</span></span>
-      </button></li>`;
+      const label = displayName(s);
+      const custom = Boolean(s.name && String(s.name).trim());
+      const tip = custom ? `Renamed · target ${s.target.label}` : s.target.label;
+      if (renamingId === s.id) {
+        return `<li class="session-item sel editing" data-id="${esc(s.id)}">
+          <div class="session">
+            <span class="s-name"><input class="s-edit" type="text" maxlength="${MAX_NAME}" value="${esc(label)}" aria-label="Session name"></span>
+            <span class="s-meta"><span>${esc(when(s.started_at))}</span><span>${clock(s.duration_ms)} · ${short(s.totals.total_damage)}</span></span>
+          </div>
+        </li>`;
+      }
+      return `<li class="session-item${s.id === selectedId ? ' sel' : ''}" data-id="${esc(s.id)}">
+        <button type="button" class="session" data-id="${esc(s.id)}">
+          <span class="s-name"><span class="s-label" title="${esc(tip)}">${esc(label)}</span>${badge}</span>
+          <span class="s-meta"><span>${esc(when(s.started_at))}</span><span>${clock(s.duration_ms)} · ${short(s.totals.total_damage)}</span></span>
+        </button>
+        <button type="button" class="s-rename" data-rename="${esc(s.id)}" title="Rename session" aria-label="Rename session">${PENCIL}</button>
+      </li>`;
     }).join('');
+    if (renamingId) {
+      const input = $('sessions').querySelector('.s-edit');
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
   }
 
   async function select(id) {
@@ -159,8 +185,11 @@
 
   function renderSummary() {
     const s = session;
-    $('s-target').textContent = s.target.label;
-    $('s-target').title = s.target.label;
+    const label = displayName(s);
+    $('s-target').textContent = label;
+    $('s-target').title = (s.name && String(s.name).trim() && s.target.label !== label)
+      ? `${label} · target ${s.target.label}`
+      : label;
     $('s-badge').textContent = kind(s.target);
     $('s-badge').hidden = !kind(s.target);
     $('s-defeated').hidden = !s.target.defeated;
@@ -682,9 +711,83 @@
     else frameId = requestAnimationFrame(frame);
   }
 
+  function beginRename(id) {
+    if (!id || renamingId === id) return;
+    renamingId = id;
+    if (selectedId !== id) selectedId = id;
+    renderList();
+  }
+
+  function cancelRename() {
+    if (!renamingId) return;
+    renamingId = null;
+    renderList();
+  }
+
+  async function commitRename(input) {
+    if (!renamingId || !input) return;
+    const id = renamingId;
+    const next = input.value;
+    renamingId = null;
+    const current = summaries.find((s) => s.id === id);
+    if (current && next.trim() === (current.name || '').trim()) {
+      renderList();
+      return;
+    }
+    // Empty clears back to the target label.
+    try {
+      const summary = await bridge.renameSession(id, next);
+      const at = summaries.findIndex((s) => s.id === id);
+      if (at >= 0) summaries[at] = { ...summaries[at], ...summary };
+      if (session && loadedId === id) {
+        session.name = summary.name || null;
+        if (rawSession) rawSession.name = summary.name || null;
+        renderSummary();
+      }
+      note('');
+    } catch (err) {
+      note(`Could not rename: ${(err && err.message) || err}`);
+    }
+    renderList();
+    if (selectedId === id && loadedId !== id) select(id);
+  }
+
   $('sessions').addEventListener('click', (event) => {
-    const item = event.target.closest('button[data-id]');
+    const renameBtn = event.target.closest('button[data-rename]');
+    if (renameBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      beginRename(renameBtn.dataset.rename);
+      return;
+    }
+    if (renamingId) return;
+    const item = event.target.closest('button.session[data-id]');
     if (item && item.dataset.id !== loadedId) select(item.dataset.id);
+  });
+  $('sessions').addEventListener('dblclick', (event) => {
+    const label = event.target.closest('.s-label');
+    if (!label) return;
+    const row = label.closest('[data-id]');
+    if (row) beginRename(row.dataset.id);
+  });
+  $('sessions').addEventListener('keydown', (event) => {
+    const input = event.target.closest('.s-edit');
+    if (!input) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitRename(input);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelRename();
+    }
+  });
+  $('sessions').addEventListener('focusout', (event) => {
+    const input = event.target.closest('.s-edit');
+    if (!input || !renamingId) return;
+    // Let focus move inside the editor without saving.
+    const next = event.relatedTarget;
+    if (next && input.closest('.session-item') && input.closest('.session-item').contains(next)) return;
+    commitRename(input);
   });
   $('play').addEventListener('click', () => (playing ? pause() : play()));
   $('scrub').addEventListener('input', () => seek($('scrub').value));
@@ -827,7 +930,7 @@
   });
   $('delete').addEventListener('click', async () => {
     if (!session) return;
-    const label = session.target.label;
+    const label = displayName(session);
     if (!confirm(`Delete the saved session "${label}" from ${when(session.started_at)}? This cannot be undone.`)) return;
     const index = summaries.findIndex((s) => s.id === loadedId);
     try {

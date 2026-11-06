@@ -204,6 +204,13 @@ impl AppState {
         sessions::delete(self.sessions_dir()?, id)
     }
 
+    /// Set or clear a saved session's custom name. Empty clears it.
+    pub fn rename_session(&self, id: &str, name: &str) -> Result<Summary, sessions::Error> {
+        let dir = self.sessions_dir()?;
+        let _io = self.sessions_io.lock().unwrap_or_else(|e| e.into_inner());
+        sessions::rename(dir, id, name)
+    }
+
     fn sessions_dir(&self) -> Result<&Path, sessions::Error> {
         self.sessions_dir
             .as_deref()

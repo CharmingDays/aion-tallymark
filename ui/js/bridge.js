@@ -109,6 +109,9 @@
     deleteSession: (id) => (inApp
       ? tauri.core.invoke('delete_session', { id })
       : send('DELETE', sessionPath(id), null, WRITE)),
+    renameSession: (id, name) => (inApp
+      ? tauri.core.invoke('rename_session', { id, name })
+      : send('PATCH', sessionPath(id), { name }, WRITE)),
     exportSession,
     onSessionsChanged,
     getAlerts: () => (inApp ? tauri.core.invoke('get_alerts') : get('/api/alerts')),

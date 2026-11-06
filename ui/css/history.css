@@ -17,24 +17,72 @@
 
 /* Session list */
 .sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.session-item {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+}
+.session-item:hover { background: var(--surface); }
+.session-item.sel { background: var(--accent-hl); border-color: var(--accent); }
+.session-item.editing { background: var(--accent-hl); border-color: var(--accent); }
 .session {
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: var(--s-2) var(--s-3);
-  border: 1px solid transparent;
+  padding-right: 34px;
+  border: 0;
   border-radius: var(--r-md);
   background: none;
+  color: inherit;
+  font: inherit;
   text-align: left;
   cursor: pointer;
 }
-.session:hover { background: var(--surface); }
-.session.sel { background: var(--accent-hl); border-color: var(--accent); }
+.session-item.editing .session { cursor: default; padding-right: var(--s-3); }
 .session .s-name { display: flex; align-items: center; gap: var(--s-2); min-width: 0; font-weight: 600; }
-.session .s-name > span:first-child { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.session.sel .s-name { color: var(--accent); }
+.session .s-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-item.sel .s-name { color: var(--accent); }
 .session .s-meta { display: flex; justify-content: space-between; gap: var(--s-2); color: var(--muted); font-size: 12px; white-space: nowrap; }
+.s-rename {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-sm, 4px);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.session-item:hover .s-rename,
+.session-item.sel .s-rename,
+.s-rename:focus-visible { opacity: 1; }
+.s-rename:hover { color: var(--text); background: var(--bg); }
+.s-rename svg { width: 14px; height: 14px; }
+.s-edit {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm, 4px);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  outline: none;
+}
 
 .placeholder { align-items: center; justify-content: center; color: var(--faint); }
 .placeholder[hidden] { display: none; }

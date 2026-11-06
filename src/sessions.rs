@@ -1,4 +1,4 @@
-﻿//! Saved fights. Each session is one JSON file in
+//! Saved fights. Each session is one JSON file in
 //! `%LOCALAPPDATA%\aion2dps\sessions\`, named `<UTC start>-<target>.json`.
 //! The file name without `.json` is the session id.
 //!
@@ -17,6 +17,9 @@
 //! Schema 2 adds healing: `heals` are `[t_ms, actor, amount, flags, skill]`
 //! with [`FLAG_HOT`] for heal-over-time ticks, plus heal totals per player and
 //! for the group. Schema 1 files still load and simply have no healing.
+//!
+//! An optional `name` is a user-given label shown in history. Missing or empty
+//! falls back to `target.label`. Renaming never changes the file name (the id).
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -38,6 +41,8 @@ pub const DEMO_FOLDER: &str = "sessions-demo";
 /// The history lists at most this many files, newest first.
 pub const LIST_LIMIT: usize = 500;
 pub const MAX_ID_CHARS: usize = 96;
+/// Cap on a custom session name (characters, not bytes).
+pub const MAX_NAME_CHARS: usize = 60;
 const MAX_SLUG_CHARS: usize = 48;
 
 pub const FLAG_CRIT: u8 = 1;
@@ -68,6 +73,9 @@ pub struct Session {
     /// Heal ticks, schema 2. Empty for older files.
     #[serde(default)]
     pub heals: Vec<Heal>,
+    /// User-given label. Missing or empty falls back to [`Target::label`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -131,6 +139,9 @@ pub struct Summary {
     pub target: Target,
     pub totals: Totals,
     pub truncated: bool,
+    /// User-given label. Missing or empty falls back to [`Target::label`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl Summary {
@@ -144,8 +155,40 @@ impl Summary {
             target: session.target.clone(),
             totals: session.totals.clone(),
             truncated: session.truncated,
+            name: session.name.clone(),
         }
     }
+
+    /// The label shown in the history list.
+    pub fn label(&self) -> &str {
+        display_name(self.name.as_deref(), &self.target.label)
+    }
+}
+
+impl Session {
+    /// The label shown for this session.
+    pub fn label(&self) -> &str {
+        display_name(self.name.as_deref(), &self.target.label)
+    }
+}
+
+/// Trim, drop control characters, and cap length. Empty means "use the default".
+pub fn normalize_name(raw: &str) -> Option<String> {
+    let cleaned: String = raw
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if cleaned.is_empty() {
+        return None;
+    }
+    Some(cleaned.chars().take(MAX_NAME_CHARS).collect())
+}
+
+fn display_name<'a>(name: Option<&'a str>, fallback: &'a str) -> &'a str {
+    name.filter(|n| !n.is_empty()).unwrap_or(fallback)
 }
 
 /// Why a session action failed. The text is for the user and never holds a path.
@@ -306,6 +349,20 @@ pub fn delete(dir: &Path, id: &str) -> Result<(), Error> {
     Ok(std::fs::remove_file(file(dir, id)?)?)
 }
 
+/// Set or clear the custom name. The file id stays the same. An empty name
+/// removes the custom label so the target name shows again.
+pub fn rename(dir: &Path, id: &str, name: &str) -> Result<Summary, Error> {
+    let path = file(dir, id)?;
+    let mut session = parse(&std::fs::read(&path)?)?;
+    session.name = normalize_name(name);
+    let bytes = serde_json::to_vec(&session).map_err(|_| Error::Io)?;
+    storage::write_atomic(&path, &bytes).map_err(|err| {
+        tracing::warn!("could not rename session {id} in {}: {err}", dir.display());
+        Error::Io
+    })?;
+    Ok(Summary::of(id.to_string(), &session))
+}
+
 fn parse(bytes: &[u8]) -> Result<Session, Error> {
     serde_json::from_slice::<Session>(bytes)
         .ok()
@@ -404,6 +461,7 @@ mod tests {
             skill_names: BTreeMap::from([(100, "Strike".into()), (200, "Bleed".into())]),
             you: None,
             heals: vec![Heal(500, 0, 400, 0, 300), Heal(1_500, 0, 500, FLAG_HOT, 300)],
+            name: None,
         }
     }
 
@@ -577,6 +635,54 @@ mod tests {
     #[test]
     fn a_missing_folder_lists_nothing() {
         assert!(list(&temp_dir("missing")).is_empty());
+    }
+
+    #[test]
+    fn rename_sets_clears_and_caps_the_name() {
+        let dir = temp_dir("rename");
+        let session = sample(1_700_000_000_000, "Fediv Wraith");
+        let id = save(&dir, &session).unwrap();
+
+        let summary = rename(&dir, &id, "  My clear  ").unwrap();
+        assert_eq!(summary.name.as_deref(), Some("My clear"));
+        assert_eq!(summary.label(), "My clear");
+        assert_eq!(load(&dir, &id).unwrap().name.as_deref(), Some("My clear"));
+        assert_eq!(list(&dir)[0].label(), "My clear");
+
+        let cleared = rename(&dir, &id, "   ").unwrap();
+        assert_eq!(cleared.name, None);
+        assert_eq!(cleared.label(), "Fediv Wraith");
+        let loaded = load(&dir, &id).unwrap();
+        assert_eq!(loaded.name, None);
+        assert_eq!(loaded.label(), "Fediv Wraith");
+
+        let long = "x".repeat(MAX_NAME_CHARS + 20);
+        let capped = rename(&dir, &id, &long).unwrap();
+        assert_eq!(capped.name.as_ref().unwrap().chars().count(), MAX_NAME_CHARS);
+        assert_eq!(normalize_name("  a\u{0007}b  c  ").as_deref(), Some("ab c"));
+        assert_eq!(normalize_name(""), None);
+        assert_eq!(rename(&dir, "nope", "x"), Err(Error::NotFound));
+        assert_eq!(rename(&dir, "../x", "x"), Err(Error::BadId));
+        // File id is unchanged.
+        assert_eq!(files(&dir), [format!("{id}.json")]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_old_session_without_a_name_still_loads() {
+        let dir = temp_dir("old-name");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut old = serde_json::to_value(sample(1_700_000_000_000, "Old Target")).unwrap();
+        old.as_object_mut().unwrap().remove("name");
+        std::fs::write(dir.join("20231114-221320-old-target.json"), old.to_string()).unwrap();
+        let session = load(&dir, "20231114-221320-old-target").unwrap();
+        assert_eq!(session.name, None);
+        assert_eq!(session.label(), "Old Target");
+        assert_eq!(list(&dir)[0].label(), "Old Target");
+        let renamed = rename(&dir, "20231114-221320-old-target", "Custom").unwrap();
+        assert_eq!(renamed.label(), "Custom");
+        assert_eq!(load(&dir, "20231114-221320-old-target").unwrap().label(), "Custom");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
