@@ -11,7 +11,7 @@ test('dismiss and removal never resurrect older detected state',()=>{
  assert.equal(cube.select([a,gone],new Set([cube.key(gone)]),2001),null);
  assert.equal(cube.select([a,gone],new Set(),8001),null);
 });
-test('auto dismiss occurs even without more packets',()=>assert.equal(cube.select([a],new Set(),13000),null));
+test('detected stays selected without more packets',()=>assert.equal(cube.select([a],new Set(),600000).entity_id,1234));
 test('invalid distance never renders',()=>assert.equal(cube.text({...a,distance_m:NaN,direction:'N'}).subline,'Synthetic cube'));
 test('dismiss target alone captures pointer through transparent body',()=>{
  let click;const button={addEventListener:(e,f)=>{click=f;},getBoundingClientRect:()=>({left:200,right:228,top:50,bottom:78})};
@@ -26,10 +26,10 @@ test('disabled config hides alert',()=>{
  cube.create(el).update({settings:{hidden_cube_alerts:false},cube_alerts:[a]},1001);assert.equal(el.hidden,true);
 });
 
-test('auto hide timer runs even if live snapshots stop',()=>{
+test('detected alert stays up until gone, opened or dismissed',()=>{
  let callback,delay;const timers={set:(fn,ms)=>{callback=fn;delay=ms;return 1;},clear(){}};
  const label={};const button={addEventListener(){}};
  const el={hidden:true,classList:{toggle(){}},querySelector:s=>s==='button'?button:label};
  cube.create(el,timers).update({cube_alerts:[a],settings:{}},2000);
- assert.equal(delay,11000);assert.equal(el.hidden,false);callback();assert.equal(el.hidden,true);
+ assert.equal(delay,undefined);assert.equal(el.hidden,false);
 });

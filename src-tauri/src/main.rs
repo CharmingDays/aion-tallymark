@@ -421,6 +421,52 @@ fn open_npcap_page() {
     open_browser(aion2dps::capture::NPCAP_URL);
 }
 
+const CUBE: &str = "cube";
+const CUBE_SIZE: (f64, f64) = (380.0, 100.0);
+
+fn cube_origin(app: &AppHandle) -> (f64, f64) {
+    let Ok(Some(monitor)) = app.primary_monitor() else {
+        return (0.0, TOAST_MARGIN);
+    };
+    let scale = monitor.scale_factor();
+    let pos = monitor.position().to_logical::<f64>(scale);
+    let size = monitor.size().to_logical::<f64>(scale);
+    (pos.x + ((size.width - CUBE_SIZE.0) / 2.0).max(0.0), pos.y + 8.0)
+}
+
+/// Hidden top-center window for the hidden-cube alert; the page shows it.
+fn build_cube_window(app: &AppHandle) -> tauri::Result<()> {
+    let (x, y) = cube_origin(app);
+    WebviewWindowBuilder::new(app, CUBE, WebviewUrl::App("cube.html".into()))
+        .title("aion2dps hidden cube")
+        .inner_size(CUBE_SIZE.0, CUBE_SIZE.1)
+        .position(x, y)
+        .visible(false)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .focusable(false)
+        .focused(false)
+        .build()?;
+    Ok(())
+}
+
+#[tauri::command]
+fn cube_visible(app: AppHandle, show: bool) {
+    let Some(window) = app.get_webview_window(CUBE) else { return };
+    if show {
+        let (x, y) = cube_origin(&app);
+        let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+        let _ = window.show();
+        let _ = window.set_always_on_top(true);
+    } else {
+        let _ = window.hide();
+    }
+}
+
 fn build_overlay(app: &AppHandle) -> tauri::Result<()> {
     let window = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("overlay.html".into()))
         .title("aion2dps")
@@ -677,6 +723,7 @@ fn main() {
             set_open_when_aion2,
             set_overlay_click_through,
             set_hidden_cube_alerts,
+            cube_visible,
             overlay_pointer,
             overlay_hit,
             clear_history,
@@ -741,6 +788,9 @@ fn main() {
             handle.listen("tray-show", move |_| {
                 tray_watch::reveal_overlay(&show_handle, build_overlay);
             });
+            if let Err(err) = build_cube_window(&handle) {
+                tracing::warn!("cube alert window is unavailable: {err}");
+            }
             tray_watch::start_watcher(handle.clone(), state.clone());
             push_snapshots(handle, state);
             Ok(())

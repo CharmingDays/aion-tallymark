@@ -318,7 +318,7 @@ fn the_history_window_lists_replays_and_deletes_sessions() {
     assert!(BRIDGE_JS.contains("window.open('/history', '_blank')"));
     assert!(APP_MAIN.contains("\"history.html\""));
     assert!(APP_MAIN.contains("#![cfg_attr(not(debug_assertions), windows_subsystem = \"windows\")]"));
-    assert!(CAPABILITIES.contains("\"windows\": [\"overlay\", \"meter\", \"history\", \"toast-*\"]"));
+    assert!(CAPABILITIES.contains("\"windows\": [\"overlay\", \"meter\", \"history\", \"toast-*\", \"cube\"]"));
     assert!(WEB_RS.contains("\"/history\" => \"/history.html\""));
     for route in ["\"/api/session/save\"", "\"/api/sessions\"", "\"/api/sessions/:id\"", "\"/api/sessions/:id/export\""] {
         assert!(WEB_RS.contains(route), "missing route {route}");

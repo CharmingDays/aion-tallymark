@@ -1,6 +1,6 @@
 // Shared, pure alert presentation logic; safe to exercise without the game.
 (function (root) {
-  const TTL = { detected: 12000, gone: 6000 };
+  const TTL = { detected: Infinity, gone: 6000 };
   const key = (a) => `${a.ts_ms}:${a.sequence}`;
   function select(alerts, dismissed, now) {
     // A removal supersedes the corresponding detection, even if dismissed.
@@ -37,7 +37,7 @@
         element.hidden = !shown;
         if (!shown) return;
         const currentKey = key(shown);
-        expiry = timers.set(() => {
+        if (Number.isFinite(TTL[shown.status])) expiry = timers.set(() => {
           if (shown && key(shown) === currentKey) element.hidden = true;
         }, Math.max(0, TTL[shown.status] - (now - shown.ts_ms)));
         if (expiry && expiry.unref) expiry.unref(); // Node tests must not keep a timer alive.

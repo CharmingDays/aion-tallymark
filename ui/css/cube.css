@@ -1,0 +1,22 @@
+/* Standalone top-center cube alert window. */
+html, body { margin: 0; background: transparent; overflow: hidden; }
+.cube-alert {
+  --cube-accent: #22d3ee;
+  position: relative; margin: 8px;
+  min-height: 6.4rem; box-sizing: border-box; padding: 1rem 3.3rem 1rem 1rem;
+  display: flex; align-items: center; gap: 1rem;
+  background: #101d25; color: var(--cube-accent);
+  border: 1px solid var(--cube-accent); border-radius: 0.8rem;
+  box-shadow: 0 0 1.8rem #22d3ee55, inset 0 0 1.2rem #22d3ee12;
+}
+.cube-alert[hidden] { display: none; }
+.cube-alert.gone { --cube-accent: #fbbf24; background: #251d12; box-shadow: 0 0 1.8rem #fbbf2444, inset 0 0 1.2rem #fbbf2412; }
+.cube-icon { flex: 0 0 2.7rem; width: 2.7rem; height: 2.7rem; }
+.cube-copy { min-width: 0; }
+.cube-title { display: block; font-size: 1.45rem; line-height: 1.25; font-weight: 750; }
+.cube-subline { display: block; margin-top: 0.4rem; font-size: 1.15rem; line-height: 1.3; color: #d0e8ec; overflow-wrap: anywhere; }
+.cube-alert.gone .cube-subline { color: #ead9b4; }
+.cube-close { position: absolute; right: 0.3rem; top: 0.3rem; width: 2.8rem; height: 2.8rem;
+  border: 0; border-radius: 0.4rem; background: transparent; color: var(--cube-accent); font-size: 2rem; cursor: pointer; }
+.cube-close:hover, .cube-close:focus-visible { background: #ffffff18; outline: 1px solid currentColor; }
+@media (max-width: 240px) { .cube-alert { gap: 0.6rem; padding-left: 0.7rem; } .cube-icon { flex-basis: 2rem; width: 2rem; } .cube-title { font-size: 1.3rem; } }

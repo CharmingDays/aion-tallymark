@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Overlay, detailed meter, session history and alert toast windows: live snapshots, dragging and resizing the frameless overlay, closing it, and focusing it for the monster name editor.",
-  "windows": ["overlay", "meter", "history", "toast-*"],
+  "windows": ["overlay", "meter", "history", "toast-*", "cube"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",

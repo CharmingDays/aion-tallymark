@@ -108,7 +108,6 @@
 
   function render(data) {
     latest = data;
-    cubes.update(data);
     if (data.settings && typeof data.settings.overlay_click_through === 'boolean') {
       clickThrough = data.settings.overlay_click_through;
       if (!clickThrough) applyCapture(true);

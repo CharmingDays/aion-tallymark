@@ -446,8 +446,11 @@ impl Detector {
         self.alerts.clear();
     }
     pub fn alerts(&mut self, now: i64) -> Vec<CubeAlert> {
-        self.alerts
-            .retain(|a| now >= a.ts_ms && now - a.ts_ms < ALERT_MS);
+        let live = &self.entities;
+        self.alerts.retain(|a| {
+            now >= a.ts_ms
+                && (now - a.ts_ms < ALERT_MS || (a.status == "detected" && live.contains_key(&a.entity_id)))
+        });
         self.alerts
             .iter()
             .cloned()
