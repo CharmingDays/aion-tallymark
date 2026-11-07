@@ -11,6 +11,6 @@
     tauri.core.invoke('cube_visible', { show: want }).catch(() => {});
   };
   el.querySelector('button').addEventListener('click', () => setTimeout(sync, 0));
-  window.bridge.subscribe((data) => { cubes.update(data); sync(); });
+  window.meterBridge.subscribe((data) => { cubes.update(data); sync(); });
   setInterval(sync, 500);
 })();
