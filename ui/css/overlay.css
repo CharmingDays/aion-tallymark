@@ -289,8 +289,6 @@ body.narrow-sm .seg .seg-short { display: inline; }
 .row.you { background: var(--accent-hl); }
 .row.heal.you { background: rgba(74, 222, 128, 0.1); }
 .row.heal .dmg { font-weight: 600; }
-.row.heal .bar > i { background: var(--heal); opacity: 0.55; }
-.row.heal.you .bar > i { opacity: 1; }
 .heal-badge {
   margin-left: 0.35rem;
   color: var(--heal);
@@ -330,10 +328,13 @@ body.narrow-sm .seg .seg-short { display: inline; }
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--faint);
-  opacity: 0.22;
+  --bar-c: var(--pc, var(--faint));
+  background: color-mix(in srgb, var(--bar-c) 22%, transparent);
+  border-left: 2px solid var(--bar-c);
+  box-sizing: border-box;
 }
-.row.you .bar > i { background: var(--accent); opacity: 0.28; }
+.row.you .bar > i { --bar-c: var(--pc, var(--accent)); }
+.row.heal.you .bar > i { --bar-c: var(--pc, var(--heal)); }
 
 .debug-note {
   flex: 0 0 auto;
