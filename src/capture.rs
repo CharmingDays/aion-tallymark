@@ -85,14 +85,18 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
                 state.with_cubes(|cubes| cubes.reset_world());
                 cube_flow = Some(flow);
             }
+            let mut cube_packets = vec![frame.packet.clone()];
+            cube_packets.extend(crate::hidden_cubes::embedded_packets(&frame.packet));
             state.with_cubes(|cubes| {
-                let found = if cube_flow == Some(flow) {
-                    cubes.observe_packet(&frame.packet, &events, now)
-                } else {
-                    crate::hidden_cubes::observations(&frame.packet, &cubes.protocol)
-                };
-                if let Some(log) = cube_discovery.as_mut() {
-                    log.observe(&frame.packet, &found, cubes, now, cube_flow == Some(flow));
+                for packet in &cube_packets {
+                    let found = if cube_flow == Some(flow) {
+                        cubes.observe_packet(packet, &events, now)
+                    } else {
+                        crate::hidden_cubes::observations(packet, &cubes.protocol)
+                    };
+                    if let Some(log) = cube_discovery.as_mut() {
+                        log.observe(packet, &found, cubes, now, cube_flow == Some(flow));
+                    }
                 }
             });
             if let Some(spawns) = spawns.as_mut() {

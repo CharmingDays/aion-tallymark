@@ -241,3 +241,14 @@ fn all_eight_world_compass_directions_are_consistent() {
         assert_eq!(d.relative(1234, 0).unwrap().1, dir);
     }
 }
+
+#[test]
+fn embedded_bundle_spawn_is_opened() {
+    let spawn = aion2dps::framing::encode_frame(&[0x40, 0x36, 0xE8, 0x07, 1, 2, 3]);
+    let bundle = aion2dps::framing::encode_bundle(&spawn);
+    let mut outer_body = vec![0x99, 0x37, 0x05];
+    outer_body.extend_from_slice(&bundle);
+    let outer = aion2dps::framing::encode_frame(&outer_body);
+    let inner = aion2dps::hidden_cubes::embedded_packets(&outer);
+    assert!(inner.iter().any(|p| p == &spawn), "spawn not found: {inner:?}");
+}

@@ -169,6 +169,61 @@ fn read_position(packet: &[u8], base: usize, layout: &PositionLayout) -> Option<
     position.valid().then_some(position)
 }
 
+/// Packets carried in bundles embedded inside `packet` (`<varint len> FF FF <u32> <lz4>`),
+/// opened recursively. The stream framer only opens top-level bundles; world
+/// spawns usually arrive embedded, so cube discovery must look inside too.
+pub fn embedded_packets(packet: &[u8]) -> Vec<Vec<u8>> {
+    let mut out = Vec::new();
+    embedded_into(packet, 0, &mut out);
+    out
+}
+fn embedded_into(packet: &[u8], depth: usize, out: &mut Vec<Vec<u8>>) {
+    if depth >= crate::framing::MAX_BUNDLE_DEPTH {
+        return;
+    }
+    let mut i = 1;
+    while i + 8 < packet.len() {
+        if packet[i] != 0xFF || packet[i + 1] != 0xFF {
+            i += 1;
+            continue;
+        }
+        let opened = (1..=3usize).rev().find_map(|width| {
+            let at = i.checked_sub(width)?;
+            let mut cursor = at;
+            let len = try_read_varint(packet, &mut cursor)?;
+            if cursor - at != width {
+                return None;
+            }
+            let size = crate::framing::frame_size(len, width as i32)?;
+            let end = at.checked_add(size)?;
+            let plain = crate::framing::decompress_bundle(packet.get(i..end)?)?;
+            Some((end, plain))
+        });
+        let Some((end, plain)) = opened else {
+            i += 1;
+            continue;
+        };
+        for frame in &crate::framing::walk_inner(&plain).frames {
+            match frame.kind {
+                crate::framing::FrameKind::Packet => {
+                    let inner = frame.bytes(&plain).to_vec();
+                    embedded_into(&inner, depth + 1, out);
+                    out.push(inner);
+                }
+                crate::framing::FrameKind::Bundle => {
+                    if let Some(p) = crate::framing::decompress_bundle(frame.payload(&plain)) {
+                        for f in &crate::framing::walk_inner(&p).frames {
+                            if matches!(f.kind, crate::framing::FrameKind::Packet) {
+                                out.push(f.bytes(&p).to_vec());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i = end;
+    }
+}
 #[derive(Clone, Debug, Serialize)]
 pub struct CubeAlert {
     pub sequence: u64,
