@@ -1,0 +1,7 @@
+{
+  "templates": [],
+  "position": null,
+  "spawn_position": null,
+  "map": null,
+  "_note": "No verified hidden cube IDs, coordinate offsets/units/axes, or map opcode yet. Intentionally inert. See docs/hidden-cubes.md."
+}

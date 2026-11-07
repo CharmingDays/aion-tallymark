@@ -53,6 +53,8 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
     let mut assembler = Assembler::new();
     let mut spawns = SpawnDebug::from_env();
     let mut deaths = DeathDebug::from_env();
+    let mut cube_discovery = crate::cube_discovery::CubeDiscovery::from_env();
+    let mut cube_flow = None;
     while let Ok(segment) = rx.recv() {
         state.with_capture(|capture| capture.segments = capture.segments.saturating_add(1));
         let framed = assembler.push(
@@ -69,16 +71,36 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
         let now = now_ms();
         for frame in framed {
             let events = decode::parse_packet(&frame.packet);
+            let locks = events.iter().any(|event| match event {
+                Event::Hit(hit) => !hit.taken && hit.total() > 0 && hit.skill >= 10_000_000,
+                _ => false,
+            });
+            // Trust only the direction identified by self identity or combat,
+            // never a coincidental opcode on another captured TCP connection.
+            let flow = (segment.src, segment.sport, segment.dst, segment.dport);
+            let identifies_server = events.iter().any(|event| matches!(event,
+                Event::You { .. } | Event::Name { is_self: true, .. }))
+                || locks;
+            if identifies_server && cube_flow != Some(flow) {
+                state.with_cubes(|cubes| cubes.reset_world());
+                cube_flow = Some(flow);
+            }
+            state.with_cubes(|cubes| {
+                let found = if cube_flow == Some(flow) {
+                    cubes.observe_packet(&frame.packet, &events, now)
+                } else {
+                    crate::hidden_cubes::observations(&frame.packet, &cubes.protocol)
+                };
+                if let Some(log) = cube_discovery.as_mut() {
+                    log.observe(&frame.packet, &found, cubes, now, cube_flow == Some(flow));
+                }
+            });
             if let Some(spawns) = spawns.as_mut() {
                 spawns.observe(&frame.packet, &events, now);
             }
             if let Some(deaths) = deaths.as_mut() {
                 deaths.observe(&frame.packet, &events, now);
             }
-            let locks = events.iter().any(|event| match event {
-                Event::Hit(hit) => !hit.taken && hit.total() > 0 && hit.skill >= 10_000_000,
-                _ => false,
-            });
             if locks {
                 assembler.lock_port(frame.src_port);
             }

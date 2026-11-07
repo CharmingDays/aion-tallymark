@@ -57,10 +57,13 @@ pub struct Live {
     pub capture: CaptureInfo,
     pub settings: SettingsView,
     pub history: Vec<UnitHistory>,
+    pub cube_alerts: Vec<crate::hidden_cubes::CubeAlert>,
 }
 
 pub struct AppState {
     combat: Mutex<Combat>,
+    cubes: Mutex<crate::hidden_cubes::Detector>,
+    hidden_cube_alerts: AtomicBool,
     capture: Mutex<CaptureInfo>,
     /// When on, closing the overlay keeps the app in the tray and reopens it
     /// when the AION 2 client starts. Desktop shell only; combat ignores it.
@@ -107,6 +110,8 @@ impl AppState {
         }
         Self {
             combat: Mutex::new(combat),
+            cubes: Mutex::new(crate::hidden_cubes::Detector::default()),
+            hidden_cube_alerts: AtomicBool::new(stored.hidden_cube_alerts),
             capture: Mutex::new(CaptureInfo::default()),
             open_when_aion2: AtomicBool::new(stored.open_when_aion2),
             overlay_click_through: AtomicBool::new(stored.overlay_click_through),
@@ -252,7 +257,16 @@ impl AppState {
         };
         settings.open_when_aion2 = self.open_when_aion2();
         settings.overlay_click_through = self.overlay_click_through();
+        settings.hidden_cube_alerts = self.hidden_cube_alerts();
         Live {
+            cube_alerts: self.with_cubes(|cubes| {
+                if self.hidden_cube_alerts() {
+                    cubes.alerts(now)
+                } else {
+                    cubes.clear_alerts();
+                    Vec::new()
+                }
+            }),
             meter,
             settings,
             history,
@@ -346,6 +360,19 @@ impl AppState {
         self.store_settings();
     }
 
+    pub fn with_cubes<T>(&self, f: impl FnOnce(&mut crate::hidden_cubes::Detector) -> T) -> T {
+        f(&mut self.cubes.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    pub fn hidden_cube_alerts(&self) -> bool {
+        self.hidden_cube_alerts.load(Ordering::Relaxed)
+    }
+    pub fn set_hidden_cube_alerts(&self, on: bool) {
+        self.hidden_cube_alerts.store(on, Ordering::Relaxed);
+        self.with_cubes(|cubes| cubes.clear_alerts());
+        self.store_settings();
+    }
+
     fn store_settings(&self) {
         let view = self.with_combat(|combat| combat.settings());
         store_settings(&StoredSettings {
@@ -355,6 +382,7 @@ impl AppState {
             boss_engage_lock: view.boss_engage_lock,
             open_when_aion2: self.open_when_aion2(),
             overlay_click_through: self.overlay_click_through(),
+            hidden_cube_alerts: self.hidden_cube_alerts(),
         });
     }
 
@@ -382,6 +410,7 @@ struct StoredSettings {
     open_when_aion2: bool,
     /// Default on: overlay body is click-through.
     overlay_click_through: bool,
+    hidden_cube_alerts: bool,
 }
 
 impl Default for StoredSettings {
@@ -393,6 +422,7 @@ impl Default for StoredSettings {
             boss_engage_lock: true,
             open_when_aion2: false,
             overlay_click_through: true,
+            hidden_cube_alerts: true,
         }
     }
 }
@@ -406,6 +436,7 @@ impl From<SettingsView> for StoredSettings {
             boss_engage_lock: view.boss_engage_lock,
             open_when_aion2: view.open_when_aion2,
             overlay_click_through: view.overlay_click_through,
+            hidden_cube_alerts: view.hidden_cube_alerts,
         }
     }
 }
@@ -454,6 +485,28 @@ fn store_settings(settings: &StoredSettings) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cube_setting_defaults_on_and_roundtrips_live_without_enabling_demo_alerts() {
+        let state = AppState::with_storage(None, None);
+        assert!(state.live(0).settings.hidden_cube_alerts);
+        state.set_hidden_cube_alerts(false);
+        assert!(!state.live(0).settings.hidden_cube_alerts);
+        assert!(state.live(0).cube_alerts.is_empty());
+        state.set_reset_after_secs(40);
+        assert!(!state.hidden_cube_alerts());
+        state.set_hidden_cube_alerts(true);
+        assert!(state.live(0).cube_alerts.is_empty());
+    }
+
+    #[test]
+    fn hidden_cube_preference_is_backward_compatible_and_serializable() {
+        let mut stored: StoredSettings = serde_json::from_str("{}").unwrap();
+        assert!(stored.hidden_cube_alerts);
+        stored.hidden_cube_alerts = false;
+        let back: StoredSettings = serde_json::from_str(&serde_json::to_string(&stored).unwrap()).unwrap();
+        assert!(!back.hidden_cube_alerts);
+    }
 
     #[test]
     fn a_settings_file_keeps_only_the_reset_delay() {

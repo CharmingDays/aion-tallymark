@@ -48,6 +48,7 @@ static FILES: &[(&str, &str, &[u8])] = &[
     ("/js/naming.js", JS, include_bytes!("../ui/js/naming.js")),
     ("/js/boss-lock.js", JS, include_bytes!("../ui/js/boss-lock.js")),
     ("/js/session-save.js", JS, include_bytes!("../ui/js/session-save.js")),
+    ("/js/cube-alert.js", JS, include_bytes!("../ui/js/cube-alert.js")),
     ("/js/overlay.js", JS, include_bytes!("../ui/js/overlay.js")),
     ("/js/meter.js", JS, include_bytes!("../ui/js/meter.js")),
     ("/js/history.js", JS, include_bytes!("../ui/js/history.js")),
@@ -144,6 +145,7 @@ struct SettingsBody {
     boss_engage_lock: Option<bool>,
     open_when_aion2: Option<bool>,
     overlay_click_through: Option<bool>,
+    hidden_cube_alerts: Option<bool>,
 }
 
 /// Any subset of the settings. Nothing applies unless all of it is valid.
@@ -180,6 +182,9 @@ async fn settings(
     }
     if let Some(on) = body.overlay_click_through {
         state.set_overlay_click_through(on);
+    }
+    if let Some(on) = body.hidden_cube_alerts {
+        state.set_hidden_cube_alerts(on);
     }
     StatusCode::NO_CONTENT
 }

@@ -7,6 +7,7 @@
   const { esc, short, clock, fightState, debugNote, UNKNOWN } = window.fmt;
   const bridge = window.meterBridge;
   const $ = (id) => document.getElementById(id);
+  const cubes = window.cubeAlert.create($('cube-alert'));
 
   // Match src/overlay_layout.rs (DESIGN_WIDTH / rem floor / row pitch).
   const DESIGN_WIDTH = 280;
@@ -107,6 +108,7 @@
 
   function render(data) {
     latest = data;
+    cubes.update(data);
     if (data.settings && typeof data.settings.overlay_click_through === 'boolean') {
       clickThrough = data.settings.overlay_click_through;
       if (!clickThrough) applyCapture(true);
@@ -308,7 +310,7 @@
     const h = window.innerHeight;
     if (!clickThrough || holding) return true;
     if (x < 0 || y < 0 || x >= w || y >= h) return false;
-    if (y < topBarPx) return true;
+    if (y < topBarPx || cubes.hit(x, y)) return true;
     return x < EDGE_PX || x >= w - EDGE_PX || y >= h - EDGE_PX;
   }
 

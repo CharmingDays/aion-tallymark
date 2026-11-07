@@ -338,6 +338,8 @@ pub struct SettingsView {
     /// Desktop shell: overlay body click-through (top bar stays interactive).
     /// Combat ignores this; AppState fills it for the live view.
     pub overlay_click_through: bool,
+    /// AppState-owned passive cube alert preference.
+    pub hidden_cube_alerts: bool,
 }
 
 /// The live view is held on a boss that just died.
@@ -513,6 +515,7 @@ impl Combat {
             boss_engage_lock: self.engage_lock,
             open_when_aion2: false,
             overlay_click_through: true,
+            hidden_cube_alerts: true,
         }
     }
 

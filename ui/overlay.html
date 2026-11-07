@@ -55,6 +55,11 @@
     <div class="debug-note" id="debug-note" hidden></div>
     <div class="status" id="foot-note">Idle reset in 30s</div>
   </div>
+  <aside class="cube-alert" id="cube-alert" role="status" aria-live="polite" hidden>
+    <svg class="cube-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 29 9.5v13L16 30 3 22.5v-13ZM3 9.5 16 17l13-7.5M16 17v13M9.5 5.8l13 7.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <div class="cube-copy"><strong class="cube-title" data-cube-title>Hidden Cube nearby</strong><span class="cube-subline" data-cube-subline></span></div>
+    <button class="cube-close" type="button" aria-label="Dismiss hidden cube alert" title="Dismiss hidden cube alert">&#215;</button>
+  </aside>
   <div class="rz n app-only" data-dir="North"></div>
   <div class="rz s app-only" data-dir="South"></div>
   <div class="rz e app-only" data-dir="East"></div>
@@ -75,6 +80,7 @@
 <script src="js/notify.js"></script>
 <script src="js/heal-share.js"></script>
 <script src="js/npcap-help.js"></script>
+<script src="js/cube-alert.js"></script>
 <script src="js/overlay.js"></script>
 </body>
 </html>

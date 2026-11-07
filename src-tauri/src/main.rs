@@ -171,6 +171,11 @@ fn set_overlay_click_through(state: State<'_, Arc<AppState>>, on: bool) {
     state.set_overlay_click_through(on);
 }
 
+#[tauri::command]
+fn set_hidden_cube_alerts(state: State<'_, Arc<AppState>>, on: bool) {
+    state.set_hidden_cube_alerts(on);
+}
+
 /// The mouse pointer in the overlay's own CSS pixels (same idea as toast_pointer).
 #[tauri::command]
 fn overlay_pointer(window: WebviewWindow) -> Option<(f64, f64)> {
@@ -671,6 +676,7 @@ fn main() {
             unlock,
             set_open_when_aion2,
             set_overlay_click_through,
+            set_hidden_cube_alerts,
             overlay_pointer,
             overlay_hit,
             clear_history,

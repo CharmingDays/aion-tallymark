@@ -101,6 +101,9 @@
     setOverlayClickThrough: (on) => (inApp
       ? tauri.core.invoke('set_overlay_click_through', { on })
       : post('/api/settings', { overlay_click_through: on })),
+    setHiddenCubeAlerts: (on) => (inApp
+      ? tauri.core.invoke('set_hidden_cube_alerts', { on })
+      : post('/api/settings', { hidden_cube_alerts: on })),
     /** Overlay CSS-pixel pointer, or null when unavailable. */
     overlayPointer: () => (inApp ? tauri.core.invoke('overlay_pointer') : Promise.resolve(null)),
     /** Capture clicks (true) or let them through to the game (false). */

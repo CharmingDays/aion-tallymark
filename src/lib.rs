@@ -32,3 +32,6 @@ pub mod web;
 
 pub use combat::{Combat, Snapshot, TargetMode};
 pub use state::AppState;
+
+pub mod hidden_cubes;
+pub mod cube_discovery;

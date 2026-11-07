@@ -296,6 +296,7 @@
     }
     if (typeof s.boss_engage_lock === 'boolean') $('boss-engage').checked = s.boss_engage_lock;
     if (typeof s.open_when_aion2 === 'boolean') $('open-when-aion2').checked = s.open_when_aion2;
+    $('hidden-cube-alerts').checked = s.hidden_cube_alerts !== false;
     if (typeof s.overlay_click_through === 'boolean') $('overlay-click-through').checked = s.overlay_click_through;
     youColor = pcApi.readYouColor();
     youColorDirty = false;
@@ -338,7 +339,7 @@
     if (on) { clearTimeout(savedTimer); configNote.textContent = ''; configNote.className = 'cp-status'; }
   }
   ['reset-secs', 'boss-lock-secs', 'boss-damage'].forEach((id) => $(id).addEventListener('input', () => setDirty(true)));
-  ['boss-engage', 'open-when-aion2', 'overlay-click-through'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
+  ['boss-engage', 'open-when-aion2', 'overlay-click-through', 'hidden-cube-alerts'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
   drawYouColor();
   $('you-presets').addEventListener('click', (event) => {
     const b = event.target.closest('button[data-c]');
@@ -365,6 +366,7 @@
     const engage = $('boss-engage').checked;
     const openWhen = $('open-when-aion2').checked;
     const clickThrough = $('overlay-click-through').checked;
+    const cubeAlerts = $('hidden-cube-alerts').checked;
     configSaving = true;
     saveBtn.disabled = true;
     let failed = false;
@@ -389,6 +391,10 @@
       try {
         await bridge.setOverlayClickThrough(clickThrough);
       } catch (_) { failed = true; $('app-note').textContent = 'Could not save.'; }
+    }
+    if (cubeAlerts !== s.hidden_cube_alerts) {
+      try { await bridge.setHiddenCubeAlerts(cubeAlerts); }
+      catch (_) { failed = true; configNote.textContent = 'Could not save cube alerts.'; }
     }
     if (youColorDirty) {
       youColor = pcApi.writeYouColor(youColor);
