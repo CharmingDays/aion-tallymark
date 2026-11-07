@@ -12,6 +12,8 @@ pub struct CubeDiscovery {
     file: File,
     written: u64,
     rows: u32,
+    /// AION2DPS_DEBUG_CUBES=2 logs every framed opcode (local file only).
+    wide: bool,
 }
 const CAP: u64 = 20 * 1024 * 1024;
 pub fn default_path() -> PathBuf {
@@ -23,9 +25,11 @@ pub fn default_path() -> PathBuf {
 }
 impl CubeDiscovery {
     pub fn from_env() -> Option<Self> {
-        if std::env::var("AION2DPS_DEBUG_CUBES").ok().as_deref() != Some("1") {
-            return None;
-        }
+        let wide = match std::env::var("AION2DPS_DEBUG_CUBES").ok().as_deref() {
+            Some("1") => false,
+            Some("2") => true,
+            _ => return None,
+        };
         let path = default_path();
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).ok()?;
@@ -44,6 +48,7 @@ impl CubeDiscovery {
             file,
             written,
             rows: 0,
+            wide,
         })
     }
     pub fn observe(
@@ -54,7 +59,8 @@ impl CubeDiscovery {
         now: i64,
         server_identified: bool,
     ) {
-        if self.written >= CAP || self.rows >= 50_000 {
+        let (cap, max_rows) = if self.wide { (CAP * 10, 500_000) } else { (CAP, 50_000) };
+        if self.written >= cap || self.rows >= max_rows {
             return;
         }
         let mut at = 0;
@@ -64,7 +70,7 @@ impl CubeDiscovery {
         let Some(op) = packet.get(at..at + 2) else {
             return;
         };
-        if !matches!(
+        if !self.wide && !matches!(
             op,
             [0x40, 0x36] | [0x21, 0x8D] | [0x42, 0x36] | [0x2A, 0x38] | [0x33, 0x36]
         ) {
@@ -96,7 +102,7 @@ impl CubeDiscovery {
             "observations":found,"opcode_hex":hex,"len":packet.len(),
             "truncated":packet.len()-at > shown.len()})
         .to_string();
-        if self.written + line.len() as u64 + 1 > CAP {
+        if self.written + line.len() as u64 + 1 > cap {
             return;
         }
         if writeln!(self.file, "{line}").is_ok() {
@@ -128,6 +134,7 @@ mod tests {
             file,
             written: 0,
             rows: 0,
+            wide: false,
         };
         let detector = Detector::default();
         log.observe(
