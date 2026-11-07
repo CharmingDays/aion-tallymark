@@ -19,7 +19,7 @@
       ? ` \u00b7 ${Math.round(a.distance_m)}m ${a.direction}` : '';
     return { title: 'Hidden Cube nearby', subline: `${type}${distance}` };
   }
-  function create(element, timers = { set: setTimeout, clear: clearTimeout }) {
+  function create(element, timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) }) {
     const dismissed = new Set();
     let shown = null;
     let expiry = null;
