@@ -269,3 +269,17 @@ fn verified_cube_object_appears_and_disappears() {
     for o in observations(&gone, &p) { d.apply(o, 2000); }
     assert!(d.alerts(2000).iter().any(|a| a.status == "gone"));
 }
+
+#[test]
+fn opened_cube_reports_who_opened_it() {
+    use aion2dps::hidden_cubes::{observations, Detector, Observation, Protocol};
+    let p = Protocol::bundled();
+    let mut d = Detector::new(p.clone());
+    d.apply(Observation::Spawn { id: 42865, template: 1_200_039 }, 0);
+    for o in observations(&encode_frame(&[0x3A, 0x36, 0xf1, 0xce, 0x02, 0xf0, 0x7e, 0x01, 0, 0, 0]), &p) { d.apply(o, 10); }
+    for o in observations(&encode_frame(&[0x35, 0x36, 0xf1, 0xce, 0x02, 0x04, 0x03, 0x00]), &p) { d.apply(o, 20); }
+    let alerts = d.alerts(20);
+    assert_eq!(alerts.len(), 1);
+    assert_eq!(alerts[0].status, "opened");
+    assert_eq!(alerts[0].opened_by_id, Some(16240));
+}

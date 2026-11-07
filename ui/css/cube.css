@@ -2,7 +2,7 @@
 html, body { margin: 0; background: transparent; overflow: hidden; }
 .cube-alert {
   --cube-accent: #22d3ee;
-  position: relative; margin: 8px;
+  position: relative; margin: 10px 14px 24px; max-width: calc(100vw - 28px);
   min-height: 6.4rem; box-sizing: border-box; padding: 1rem 3.3rem 1rem 1rem;
   display: flex; align-items: center; gap: 1rem;
   background: #101d25; color: var(--cube-accent);
@@ -20,3 +20,6 @@ html, body { margin: 0; background: transparent; overflow: hidden; }
   border: 0; border-radius: 0.4rem; background: transparent; color: var(--cube-accent); font-size: 2rem; cursor: pointer; }
 .cube-close:hover, .cube-close:focus-visible { background: #ffffff18; outline: 1px solid currentColor; }
 @media (max-width: 240px) { .cube-alert { gap: 0.6rem; padding-left: 0.7rem; } .cube-icon { flex-basis: 2rem; width: 2rem; } .cube-title { font-size: 1.3rem; } }
+
+.cube-alert.opened { --cube-accent: #4ade80; background: #102016; box-shadow: 0 0 1.8rem #4ade8044, inset 0 0 1.2rem #4ade8012; }
+.cube-alert.opened .cube-subline { color: #cdeed6; }

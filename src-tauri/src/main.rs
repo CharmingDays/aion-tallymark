@@ -422,7 +422,7 @@ fn open_npcap_page() {
 }
 
 const CUBE: &str = "cube";
-const CUBE_SIZE: (f64, f64) = (380.0, 100.0);
+const CUBE_SIZE: (f64, f64) = (460.0, 140.0);
 
 fn cube_origin(app: &AppHandle) -> (f64, f64) {
     let Ok(Some(monitor)) = app.primary_monitor() else {

@@ -1,6 +1,6 @@
 // Shared, pure alert presentation logic; safe to exercise without the game.
 (function (root) {
-  const TTL = { detected: Infinity, gone: 6000 };
+  const TTL = { detected: Infinity, gone: 6000, opened: 8000 };
   const key = (a) => `${a.ts_ms}:${a.sequence}`;
   function select(alerts, dismissed, now) {
     // A removal supersedes the corresponding detection, even if dismissed.
@@ -14,6 +14,10 @@
   }
   function text(a) {
     const type = a.cube_type || 'Hidden Cube';
+    if (a.status === 'opened') {
+      const who = a.opened_by_you ? 'you' : (a.opened_by || (a.opened_by_id ? 'another player' : 'someone'));
+      return { title: 'Cube opened', subline: ` \u00b7 Opened by ` };
+    }
     if (a.status === 'gone') return { title: 'Cube no longer nearby', subline: `${type} \u00b7 Out of range` };
     const distance = Number.isFinite(a.distance_m) && a.distance_m >= 0 && /^(N|NE|E|SE|S|SW|W|NW)$/.test(a.direction || '')
       ? ` \u00b7 ${Math.round(a.distance_m)}m ${a.direction}` : '';
@@ -43,6 +47,7 @@
         if (expiry && expiry.unref) expiry.unref(); // Node tests must not keep a timer alive.
         const label = text(shown);
         element.classList.toggle('gone', shown.status === 'gone');
+        element.classList.toggle('opened', shown.status === 'opened');
         element.querySelector('[data-cube-title]').textContent = label.title;
         element.querySelector('[data-cube-subline]').textContent = label.subline;
       },

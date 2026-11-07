@@ -60,6 +60,7 @@ pub enum Observation {
     Spawn { id: i32, template: u32 },
     Gone { id: i32 },
     Consumed { id: i32 },
+    Opener { id: i32, by: i32 },
     Position { id: i32, position: Position },
     Map(u32),
     WorldBoundary,
@@ -133,6 +134,13 @@ pub fn observations(packet: &[u8], protocol: &Protocol) -> Vec<Observation> {
                         out.push(Observation::Position { id, position });
                     }
                 }
+            }
+        }
+        // 3A 36 <object id> <actor id> ..: interaction finished by actor.
+        [0x3A, 0x36] => {
+            let mut at = pos;
+            if let Some(by) = try_read_varint(packet, &mut at) {
+                out.push(Observation::Opener { id, by });
             }
         }
         // 35 36 <id> <code> ..: 01 = left range, 04 = opened/consumed.
@@ -255,11 +263,15 @@ pub struct CubeAlert {
     pub cube_type: String,
     pub distance_m: Option<u32>,
     pub direction: Option<&'static str>,
+    pub opened_by_id: Option<i32>,
+    pub opened_by: Option<String>,
+    pub opened_by_you: bool,
 }
 struct Tracked {
     template: u32,
     name: String,
     position: Option<Position>,
+    opened_by: Option<i32>,
 }
 pub struct Detector {
     pub protocol: Protocol,
@@ -389,14 +401,26 @@ impl Detector {
                         template,
                         name: name.clone(),
                         position,
+                        opened_by: None,
                     },
                 );
                 self.emit(id, name, "detected", now);
             }
+            Observation::Opener { id, by } => {
+                if let Some(cube) = self.entities.get_mut(&id) {
+                    cube.opened_by = Some(by);
+                }
+            }
             Observation::Consumed { id } => {
                 self.positions.remove(&id);
-                self.entities.remove(&id);
-                self.alerts.retain(|a| a.entity_id != id);
+                if let Some(cube) = self.entities.remove(&id) {
+                    self.alerts.retain(|a| a.entity_id != id);
+                    self.emit(id, cube.name, "opened", now);
+                    if let Some(last) = self.alerts.back_mut() {
+                        last.opened_by_id = cube.opened_by;
+                        last.opened_by_you = cube.opened_by.is_some() && cube.opened_by == self.player;
+                    }
+                }
             }
             Observation::Gone { id } => {
                 self.positions.remove(&id);
@@ -416,6 +440,9 @@ impl Detector {
             cube_type: name,
             distance_m: None,
             direction: None,
+            opened_by_id: None,
+            opened_by: None,
+            opened_by_you: false,
         });
         while self.alerts.len() > 32 {
             self.alerts.pop_front();

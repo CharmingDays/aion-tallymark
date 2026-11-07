@@ -1713,6 +1713,11 @@ impl Combat {
         self.name_of(id).is_some()
     }
 
+    /// Player display name for an entity id, when the meter has seen one.
+    pub fn display_name(&self, id: i32) -> Option<String> {
+        self.name_of(id).cloned()
+    }
+
     fn name_of(&self, id: i32) -> Option<&String> {
         self.names
             .get(&self.named_id(id))

@@ -261,7 +261,13 @@ impl AppState {
         Live {
             cube_alerts: self.with_cubes(|cubes| {
                 if self.hidden_cube_alerts() {
-                    cubes.alerts(now)
+                    let mut list = cubes.alerts(now);
+                    for a in list.iter_mut() {
+                        if let Some(by) = a.opened_by_id {
+                            a.opened_by = self.with_combat(|c| c.display_name(by));
+                        }
+                    }
+                    list
                 } else {
                     cubes.clear_alerts();
                     Vec::new()
