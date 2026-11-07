@@ -1,7 +1,9 @@
 {
-  "templates": [],
+  "templates": [
+    { "id": 1200039, "name": "Hidden Cube", "verified": true }
+  ],
   "position": null,
   "spawn_position": null,
   "map": null,
-  "_note": "No verified hidden cube IDs, coordinate offsets/units/axes, or map opcode yet. Intentionally inert. See docs/hidden-cubes.md."
+  "_note": "Template 1200039 verified 2026-11-07 via 34 36 appear / 35 36 disappear (01 range, 04 opened). Player position not yet verified, so distance may be absent."
 }

@@ -59,6 +59,7 @@ impl Position {
 pub enum Observation {
     Spawn { id: i32, template: u32 },
     Gone { id: i32 },
+    Consumed { id: i32 },
     Position { id: i32, position: Position },
     Map(u32),
     WorldBoundary,
@@ -119,6 +120,27 @@ pub fn observations(packet: &[u8], protocol: &Protocol) -> Vec<Observation> {
                 });
             }
         }
+        // Interactable world objects (verified 2026-11-07 against a hidden cube):
+        // 34 36 <id> <2 bytes> <LE24 template> 00 <f32 east> <f32 north> <f32 elev> (cm).
+        [0x34, 0x36] => {
+            if let Some(b) = packet.get(pos..pos + 18) {
+                let template = u32::from_le_bytes([b[2], b[3], b[4], 0]);
+                if template != 0 {
+                    out.push(Observation::Spawn { id, template });
+                    let f = |o: usize| f32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]]) as f64 * 0.01;
+                    let position = Position { east: f(6), north: f(10), elevation: f(14) };
+                    if position.valid() {
+                        out.push(Observation::Position { id, position });
+                    }
+                }
+            }
+        }
+        // 35 36 <id> <code> ..: 01 = left range, 04 = opened/consumed.
+        [0x35, 0x36] => match packet.get(pos) {
+            Some(1) => out.push(Observation::Gone { id }),
+            Some(4) => out.push(Observation::Consumed { id }),
+            _ => {}
+        },
         // This exact suffix exists in local target-debug; meaning still needs
         // correlation against a known cube. Existing 42 36 removals also work.
         [0x21, 0x8D] | [0x42, 0x36] if packet.get(pos..) == Some(&[0, 1][..]) => {
@@ -370,6 +392,11 @@ impl Detector {
                     },
                 );
                 self.emit(id, name, "detected", now);
+            }
+            Observation::Consumed { id } => {
+                self.positions.remove(&id);
+                self.entities.remove(&id);
+                self.alerts.retain(|a| a.entity_id != id);
             }
             Observation::Gone { id } => {
                 self.positions.remove(&id);

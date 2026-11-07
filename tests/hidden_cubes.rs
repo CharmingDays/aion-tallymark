@@ -45,7 +45,7 @@ fn layout() -> PositionLayout {
 #[test]
 fn bundled_table_is_inert_no_guessed_ids_or_coordinates() {
     let p = Protocol::bundled();
-    assert!(p.templates.is_empty());
+    assert!(p.templates.iter().all(|t| t.id == 1_200_039));
     assert!(p.position.is_none());
     assert!(p.spawn_position.is_none());
     assert!(p.map.is_none());
@@ -251,4 +251,21 @@ fn embedded_bundle_spawn_is_opened() {
     let outer = aion2dps::framing::encode_frame(&outer_body);
     let inner = aion2dps::hidden_cubes::embedded_packets(&outer);
     assert!(inner.iter().any(|p| p == &spawn), "spawn not found: {inner:?}");
+}
+
+#[test]
+fn verified_cube_object_appears_and_disappears() {
+    use aion2dps::hidden_cubes::{observations, Detector, Observation, Protocol};
+    let hex = "3436f1ce020400a74f12000a6b1448d19d8d43009f1c470000000000507a430101017c73a9b5a101000000000000000000001a2646f6070000";
+    let pkt: Vec<u8> = (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect();
+    let pkt = encode_frame(&pkt);
+    let p = Protocol::bundled();
+    let obs = observations(&pkt, &p);
+    assert!(obs.contains(&Observation::Spawn { id: 42865, template: 1_200_039 }), "{obs:?}");
+    let mut d = Detector::new(p.clone());
+    for o in obs { d.apply(o, 1000); }
+    assert_eq!(d.alerts(1000)[0].status, "detected");
+    let gone = encode_frame(&[0x35, 0x36, 0xf1, 0xce, 0x02, 0x01, 0x01, 0x00]);
+    for o in observations(&gone, &p) { d.apply(o, 2000); }
+    assert!(d.alerts(2000).iter().any(|a| a.status == "gone"));
 }
