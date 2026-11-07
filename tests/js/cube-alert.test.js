@@ -33,3 +33,10 @@ test('detected alert stays up until gone, opened or dismissed',()=>{
  cube.create(el,timers).update({cube_alerts:[a],settings:{}},2000);
  assert.equal(delay,undefined);assert.equal(el.hidden,false);
 });
+
+test('opened shows type and opener',()=>{
+ const base={status:'opened',cube_type:'Hidden Cube',sequence:9,ts_ms:0,entity_id:1};
+ assert.equal(cube.text({...base,opened_by_you:true}).subline,'Hidden Cube \u00b7 Opened by you');
+ assert.equal(cube.text({...base,opened_by:'Weebette',opened_by_id:5}).subline,'Hidden Cube \u00b7 Opened by Weebette');
+ assert.equal(cube.text({...base,opened_by_id:5}).subline,'Hidden Cube \u00b7 Opened by another player');
+});

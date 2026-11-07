@@ -16,7 +16,7 @@
     const type = a.cube_type || 'Hidden Cube';
     if (a.status === 'opened') {
       const who = a.opened_by_you ? 'you' : (a.opened_by || (a.opened_by_id ? 'another player' : 'someone'));
-      return { title: 'Cube opened', subline: ` \u00b7 Opened by ` };
+      return { title: 'Cube opened', subline: `${type} \u00b7 Opened by ${who}` };
     }
     if (a.status === 'gone') return { title: 'Cube no longer nearby', subline: `${type} \u00b7 Out of range` };
     const distance = Number.isFinite(a.distance_m) && a.distance_m >= 0 && /^(N|NE|E|SE|S|SW|W|NW)$/.test(a.direction || '')
