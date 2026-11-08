@@ -2855,6 +2855,31 @@ mod tests {
     }
 
     #[test]
+    fn a_long_boss_lock_outlives_the_short_idle_reset_and_saves_the_boss() {
+        let mut combat = spawned();
+        assert!(combat.set_reset_after_secs(10));
+        assert!(combat.set_boss_lock_secs(35, 0));
+        boss_dies_at(&mut combat, 10_000);
+        // The new fight can idle out behind the held boss without releasing it.
+        combat.apply(Event::Hit(hit(1, ADD_ID, 100, 700)), 11_000);
+        combat.tick(21_000);
+        let snap = combat.snapshot(21_000);
+        assert_eq!(snap.target_id, Some(BOSS_ID));
+        assert_eq!(snap.reset_in_ms, None);
+        let lock = snap.lock.expect("boss still held past the 10 second idle reset");
+        assert_eq!((lock.remaining_ms, lock.secs, lock.pending_damage), (24_000, 35, 0));
+        let session = combat.session(21_000).expect("boss still available to save");
+        assert_eq!(session.totals.total_damage, 1_600_000);
+        assert!(session.target.boss && session.target.defeated);
+        combat.tick(44_999);
+        assert!(combat.is_locked());
+        combat.tick(45_000);
+        assert!(!combat.is_locked());
+        assert!(combat.session(45_000).is_none());
+        assert_eq!(combat.history()[0].id, BOSS_ID);
+    }
+
+    #[test]
     fn with_nothing_behind_the_lock_the_view_goes_idle() {
         let mut combat = spawned();
         boss_dies_at(&mut combat, 10_000);

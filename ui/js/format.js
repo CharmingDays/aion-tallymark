@@ -45,15 +45,20 @@
    */
   function fightState(data) {
     const m = data.meter;
-    const resetSecs = data.settings ? data.settings.reset_after_secs : 30;
+    // A frozen boss deliberately has no idle deadline. Never substitute the
+    // regular reset setting for it: the boss hold is a separate clock.
+    const bossHeld = Boolean(m.lock && !m.lock.engaged);
+    const resetSecs = bossHeld ? m.lock.secs : data.settings ? data.settings.reset_after_secs : 30;
     const hasFight = m.status !== 'idle' && m.encounter_damage > 0;
-    const ended = hasFight && (m.status === 'paused' || m.target_hp === 0);
-    const resetIn = m.reset_in_ms == null ? resetSecs : Math.ceil(m.reset_in_ms / 1000);
+    const ended = hasFight && (bossHeld || m.status === 'paused' || m.target_hp === 0);
+    const remaining = bossHeld ? m.lock.remaining_ms : m.reset_in_ms;
+    const resetIn = remaining == null ? resetSecs : Math.max(0, Math.ceil(remaining / 1000));
     const extra = m.targets_shown > 1 ? ` +${m.targets_shown - 1}` : '';
     return {
       hasFight,
       ended,
       live: hasFight && !ended && m.status === 'combat',
+      bossHeld,
       resetSecs,
       resetIn,
       target: hasFight ? m.target_label + extra : 'Waiting for combat',

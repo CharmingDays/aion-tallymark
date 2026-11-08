@@ -4,11 +4,11 @@ const lock = require('../../ui/js/boss-lock.js');
 
 test('the chip counts whole seconds up and is empty when unlocked', () => {
   assert.equal(lock.chipText(null), '');
-  assert.equal(lock.chipText({ remaining_ms: 10000 }), 'Locked 10s');
-  assert.equal(lock.chipText({ remaining_ms: 7001 }), 'Locked 8s');
-  assert.equal(lock.chipText({ remaining_ms: 1 }), 'Locked 1s');
-  assert.equal(lock.chipText({ remaining_ms: -50 }), 'Locked 0s');
-  assert.equal(lock.chipText({ remaining_ms: 0, engaged: true }), 'Locked on boss');
+  assert.equal(lock.chipText({ remaining_ms: 10000 }), '10s');
+  assert.equal(lock.chipText({ remaining_ms: 7001 }), '8s');
+  assert.equal(lock.chipText({ remaining_ms: 1 }), '1s');
+  assert.equal(lock.chipText({ remaining_ms: -50 }), '0s');
+  assert.equal(lock.chipText({ remaining_ms: 0, engaged: true }), 'On');
 });
 
 test('the chip title names the boss and a fight behind the lock', () => {

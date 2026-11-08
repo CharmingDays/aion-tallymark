@@ -134,7 +134,7 @@
       $('foot-note').textContent = healing
         ? 'Shields/absorbs not counted'
         : f.ended
-          ? `Damage kept ${f.resetSecs}s after kill`
+          ? f.bossHeld ? `Boss locked for ${f.resetIn}s` : `Damage kept ${f.resetSecs}s after kill`
           : `Idle reset in ${f.resetSecs}s`;
     }
 
