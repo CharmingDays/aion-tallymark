@@ -35,3 +35,5 @@ pub use state::AppState;
 
 pub mod hidden_cubes;
 pub mod cube_discovery;
+
+pub mod boss_popup;

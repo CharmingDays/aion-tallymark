@@ -296,6 +296,8 @@
     }
     if (typeof s.boss_engage_lock === 'boolean') $('boss-engage').checked = s.boss_engage_lock;
     if (typeof s.open_when_aion2 === 'boolean') $('open-when-aion2').checked = s.open_when_aion2;
+    $('start-with-windows').checked = s.start_with_windows === true;
+    $('pop-up-on-boss').checked = s.pop_up_on_boss !== false;
     $('hidden-cube-alerts').checked = s.hidden_cube_alerts !== false;
     if (typeof s.overlay_click_through === 'boolean') $('overlay-click-through').checked = s.overlay_click_through;
     youColor = pcApi.readYouColor();
@@ -339,7 +341,7 @@
     if (on) { clearTimeout(savedTimer); configNote.textContent = ''; configNote.className = 'cp-status'; }
   }
   ['reset-secs', 'boss-lock-secs', 'boss-damage'].forEach((id) => $(id).addEventListener('input', () => setDirty(true)));
-  ['boss-engage', 'open-when-aion2', 'overlay-click-through', 'hidden-cube-alerts'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
+  ['boss-engage', 'open-when-aion2', 'start-with-windows', 'pop-up-on-boss', 'overlay-click-through', 'hidden-cube-alerts'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
   drawYouColor();
   $('you-presets').addEventListener('click', (event) => {
     const b = event.target.closest('button[data-c]');
@@ -365,6 +367,8 @@
     if (!damage.ok) { $('boss-note').textContent = damage.error; return; }
     const engage = $('boss-engage').checked;
     const openWhen = $('open-when-aion2').checked;
+    const startWindows = $('start-with-windows').checked;
+    const popUpBoss = $('pop-up-on-boss').checked;
     const clickThrough = $('overlay-click-through').checked;
     const cubeAlerts = $('hidden-cube-alerts').checked;
     configSaving = true;
@@ -384,13 +388,21 @@
         await bridge.setOpenWhenAion2(openWhen);
         $('app-note').textContent = openWhen
           ? 'Close the overlay to wait in the tray for Aion 2.'
-          : 'Closing the overlay quits the app.';
+          : (popUpBoss ? 'Close the overlay to wait in the tray for a boss.' : 'Closing the overlay quits the app.');
       } catch (_) { failed = true; $('app-note').textContent = 'Could not save.'; }
     }
     if (bridge.inApp && clickThrough !== s.overlay_click_through) {
       try {
         await bridge.setOverlayClickThrough(clickThrough);
       } catch (_) { failed = true; $('app-note').textContent = 'Could not save.'; }
+    }
+    if (bridge.inApp && startWindows !== (s.start_with_windows === true)) {
+      try { await bridge.setStartWithWindows(startWindows); }
+      catch (err) { failed = true; $('app-note').textContent = String(err || 'Could not update Start with Windows.'); }
+    }
+    if (bridge.inApp && popUpBoss !== (s.pop_up_on_boss !== false)) {
+      try { await bridge.setPopUpOnBoss(popUpBoss); }
+      catch (_) { failed = true; $('app-note').textContent = 'Could not save boss popup setting.'; }
     }
     if (cubeAlerts !== s.hidden_cube_alerts) {
       try { await bridge.setHiddenCubeAlerts(cubeAlerts); }

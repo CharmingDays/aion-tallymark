@@ -98,6 +98,8 @@
     setOpenWhenAion2: (on) => (inApp
       ? tauri.core.invoke('set_open_when_aion2', { on })
       : post('/api/settings', { open_when_aion2: on })),
+    setStartWithWindows: (on) => tauri.core.invoke('set_start_with_windows', { on }),
+    setPopUpOnBoss: (on) => tauri.core.invoke('set_pop_up_on_boss', { on }),
     setOverlayClickThrough: (on) => (inApp
       ? tauri.core.invoke('set_overlay_click_through', { on })
       : post('/api/settings', { overlay_click_through: on })),

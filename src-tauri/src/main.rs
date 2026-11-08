@@ -20,6 +20,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod tray_watch;
+mod startup;
 
 use std::collections::HashMap;
 use std::env;
@@ -70,6 +71,7 @@ struct Args {
     no_overlay: bool,
     browser: bool,
     debug_targets: bool,
+    start_hidden: bool,
 }
 
 impl Args {
@@ -80,10 +82,12 @@ impl Args {
             no_overlay: false,
             browser: false,
             debug_targets: false,
+            start_hidden: false,
         };
         let mut iter = env::args().skip(1);
         while let Some(arg) = iter.next() {
             match arg.as_str() {
+                "--start-hidden" => args.start_hidden = true,
                 "--demo" => args.demo = true,
                 "--no-overlay" => args.no_overlay = true,
                 "--browser" => args.browser = true,
@@ -164,6 +168,19 @@ fn unlock(state: State<'_, Arc<AppState>>) {
 #[tauri::command]
 fn set_open_when_aion2(state: State<'_, Arc<AppState>>, on: bool) {
     state.set_open_when_aion2(on);
+}
+
+#[tauri::command]
+fn set_start_with_windows(state: State<'_, Arc<AppState>>, on: bool) -> Result<(), String> {
+    // Do not persist an enabled preference if Windows rejected the task.
+    startup::configure(on)?;
+    state.set_start_with_windows(on);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_pop_up_on_boss(state: State<'_, Arc<AppState>>, on: bool) {
+    state.set_pop_up_on_boss(on);
 }
 
 #[tauri::command]
@@ -597,14 +614,30 @@ fn show_page(app: &AppHandle, label: &str, page: &str, title: &str) -> tauri::Re
 }
 
 /// Push a snapshot to every window. The payload is the same JSON as `/api/live`.
-fn push_snapshots(app: AppHandle, state: Arc<AppState>) {
+fn push_snapshots(app: AppHandle, state: Arc<AppState>, windowless: bool) {
     thread::Builder::new()
         .name("aion2dps-push".into())
-        .spawn(move || loop {
-            if !app.webview_windows().is_empty() {
-                let _ = app.emit("live", state.live(now_ms()));
+        .spawn(move || {
+            let mut popup = aion2dps::boss_popup::BossPopup::default();
+            loop {
+                let live = state.live(now_ms());
+                let keys = state.with_combat(|combat| combat.boss_detection_keys());
+                // Use the same restore action as the tray. Never steal focus
+                // when either normal app window is already visible.
+                let hidden = app.state::<tray_watch::TrayWatch>().waiting()
+                    || [OVERLAY, METER].iter().all(|label| {
+                        app.get_webview_window(label).is_none_or(|w| {
+                            !w.is_visible().unwrap_or(true) || w.is_minimized().unwrap_or(false)
+                        })
+                    });
+                if popup.observe(&keys, !windowless && state.pop_up_on_boss(), hidden) {
+                    let _ = app.emit("tray-show", ());
+                }
+                if !app.webview_windows().is_empty() {
+                    let _ = app.emit("live", live);
+                }
+                thread::sleep(PUSH_EVERY);
             }
-            thread::sleep(PUSH_EVERY);
         })
         .expect("snapshot thread");
 }
@@ -707,6 +740,7 @@ fn main() {
 
     let windowless = args.windowless();
     let no_overlay = args.no_overlay;
+    let start_hidden = args.start_hidden;
     let app = tauri::Builder::default()
         .manage(state.clone())
         .manage(Dashboard(dashboard))
@@ -721,6 +755,8 @@ fn main() {
             set_boss_settings,
             unlock,
             set_open_when_aion2,
+            set_start_with_windows,
+            set_pop_up_on_boss,
             set_overlay_click_through,
             set_hidden_cube_alerts,
             cube_visible,
@@ -763,8 +799,8 @@ fn main() {
                 if closing_quits_app(window.label()) {
                     let app = window.app_handle();
                     let state = app.state::<Arc<AppState>>();
-                    if state.open_when_aion2() {
-                        // Stay in the tray and reopen when AION 2 starts.
+                    if state.open_when_aion2() || state.pop_up_on_boss() {
+                        // Stay in the tray for the enabled game/boss triggers.
                         close_overlay_to_tray(app, api);
                     } else {
                         // Exits the process: the capture, push and web server
@@ -776,7 +812,9 @@ fn main() {
         })
         .setup(move |app| {
             let handle = app.handle().clone();
-            if !no_overlay {
+            if start_hidden {
+                tray_watch::hide_to_tray(&handle)?;
+            } else if !no_overlay {
                 if let Err(err) = build_overlay(&handle) {
                     tracing::warn!("overlay window is unavailable: {err}");
                     show_meter(&handle)?;
@@ -792,7 +830,7 @@ fn main() {
                 tracing::warn!("cube alert window is unavailable: {err}");
             }
             tray_watch::start_watcher(handle.clone(), state.clone());
-            push_snapshots(handle, state);
+            push_snapshots(handle, state, windowless);
             Ok(())
         })
         .build(tauri::generate_context!())

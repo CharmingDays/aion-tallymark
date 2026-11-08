@@ -335,6 +335,8 @@ pub struct SettingsView {
     /// Desktop shell: open the overlay when AION 2 starts (tray wait).
     /// Combat ignores this; AppState fills it for the live view.
     pub open_when_aion2: bool,
+    pub start_with_windows: bool,
+    pub pop_up_on_boss: bool,
     /// Desktop shell: overlay body click-through (top bar stays interactive).
     /// Combat ignores this; AppState fills it for the live view.
     pub overlay_click_through: bool,
@@ -514,6 +516,8 @@ impl Combat {
             boss_damage_threshold: self.boss_damage,
             boss_engage_lock: self.engage_lock,
             open_when_aion2: false,
+            start_with_windows: false,
+            pop_up_on_boss: true,
             overlay_click_through: true,
             hidden_cube_alerts: true,
         }
@@ -1080,6 +1084,19 @@ impl Combat {
                 .monster_type(id)
                 .and_then(monster_names::bundled)
                 .is_some_and(|b| b.boss)
+    }
+
+    /// Boss detections independent of the selected display mode. Include the
+    /// held fight so a death lock does not cause the same boss to be detected twice.
+    pub fn boss_detection_keys(&self) -> Vec<(i64, i32)> {
+        let mut keys: Vec<_> = self.targets.keys()
+            .filter(|id| self.target_is_boss(**id))
+            .map(|id| (self.first_ms.unwrap_or(0), *id))
+            .collect();
+        if let Some(lock) = &self.locked {
+            keys.extend(lock.view.boss_detection_keys());
+        }
+        keys
     }
 
     pub fn apply_hit(&mut self, hit: &Hit, now: i64) {
@@ -1823,6 +1840,20 @@ mod tests {
             miss: false,
             resist: false,
         }
+    }
+
+    #[test]
+    fn boss_popup_detection_is_independent_of_display_mode_and_encounter() {
+        let mut combat = Combat::new();
+        combat.set_boss_damage_threshold(1_500_000);
+        combat.set_mode(TargetMode::All);
+        combat.apply_hit(&hit(1, 9, 100, 1_500_001), 1000);
+        assert!(combat.snapshot(1000).target_id.is_none());
+        assert_eq!(combat.boss_detection_keys(), vec![(1000, 9)]);
+        combat.reset(2000);
+        assert!(combat.boss_detection_keys().is_empty());
+        combat.apply_hit(&hit(1, 9, 100, 1_500_001), 3000);
+        assert_eq!(combat.boss_detection_keys(), vec![(3000, 9)]);
     }
 
     #[test]

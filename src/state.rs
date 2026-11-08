@@ -68,6 +68,8 @@ pub struct AppState {
     /// When on, closing the overlay keeps the app in the tray and reopens it
     /// when the AION 2 client starts. Desktop shell only; combat ignores it.
     open_when_aion2: AtomicBool,
+    start_with_windows: AtomicBool,
+    pop_up_on_boss: AtomicBool,
     /// When on, the overlay body lets clicks through to the game; the top bar
     /// and resize edges stay interactive. Desktop shell only.
     overlay_click_through: AtomicBool,
@@ -114,6 +116,8 @@ impl AppState {
             hidden_cube_alerts: AtomicBool::new(stored.hidden_cube_alerts),
             capture: Mutex::new(CaptureInfo::default()),
             open_when_aion2: AtomicBool::new(stored.open_when_aion2),
+            start_with_windows: AtomicBool::new(stored.start_with_windows),
+            pop_up_on_boss: AtomicBool::new(stored.pop_up_on_boss),
             overlay_click_through: AtomicBool::new(stored.overlay_click_through),
             names_path,
             names_io: Mutex::new(()),
@@ -256,6 +260,8 @@ impl AppState {
             (combat.snapshot(now), combat.settings(), combat.history())
         };
         settings.open_when_aion2 = self.open_when_aion2();
+        settings.start_with_windows = self.start_with_windows();
+        settings.pop_up_on_boss = self.pop_up_on_boss();
         settings.overlay_click_through = self.overlay_click_through();
         settings.hidden_cube_alerts = self.hidden_cube_alerts();
         Live {
@@ -355,6 +361,25 @@ impl AppState {
         self.store_settings();
     }
 
+    pub fn start_with_windows(&self) -> bool {
+        self.start_with_windows.load(Ordering::Relaxed)
+    }
+
+    /// Called by the desktop shell only after Task Scheduler succeeds.
+    pub fn set_start_with_windows(&self, on: bool) {
+        self.start_with_windows.store(on, Ordering::Relaxed);
+        self.store_settings();
+    }
+
+    pub fn pop_up_on_boss(&self) -> bool {
+        self.pop_up_on_boss.load(Ordering::Relaxed)
+    }
+
+    pub fn set_pop_up_on_boss(&self, on: bool) {
+        self.pop_up_on_boss.store(on, Ordering::Relaxed);
+        self.store_settings();
+    }
+
     /// Whether the overlay body should ignore the mouse (top bar stays live).
     pub fn overlay_click_through(&self) -> bool {
         self.overlay_click_through.load(Ordering::Relaxed)
@@ -387,6 +412,8 @@ impl AppState {
             boss_damage_threshold: view.boss_damage_threshold,
             boss_engage_lock: view.boss_engage_lock,
             open_when_aion2: self.open_when_aion2(),
+            start_with_windows: self.start_with_windows(),
+            pop_up_on_boss: self.pop_up_on_boss(),
             overlay_click_through: self.overlay_click_through(),
             hidden_cube_alerts: self.hidden_cube_alerts(),
         });
@@ -414,6 +441,8 @@ struct StoredSettings {
     boss_engage_lock: bool,
     /// Default off: the app does not wait in the tray for the game.
     open_when_aion2: bool,
+    start_with_windows: bool,
+    pop_up_on_boss: bool,
     /// Default on: overlay body is click-through.
     overlay_click_through: bool,
     hidden_cube_alerts: bool,
@@ -427,6 +456,8 @@ impl Default for StoredSettings {
             boss_damage_threshold: DEFAULT_BOSS_DAMAGE,
             boss_engage_lock: true,
             open_when_aion2: false,
+            start_with_windows: false,
+            pop_up_on_boss: true,
             overlay_click_through: true,
             hidden_cube_alerts: true,
         }
@@ -441,6 +472,8 @@ impl From<SettingsView> for StoredSettings {
             boss_damage_threshold: view.boss_damage_threshold,
             boss_engage_lock: view.boss_engage_lock,
             open_when_aion2: view.open_when_aion2,
+            start_with_windows: view.start_with_windows,
+            pop_up_on_boss: view.pop_up_on_boss,
             overlay_click_through: view.overlay_click_through,
             hidden_cube_alerts: view.hidden_cube_alerts,
         }
@@ -524,6 +557,8 @@ mod tests {
         assert_eq!(stored.boss_lock_secs, DEFAULT_BOSS_LOCK_SECS);
         assert_eq!(stored.boss_damage_threshold, DEFAULT_BOSS_DAMAGE);
         assert!(!stored.open_when_aion2);
+        assert!(!stored.start_with_windows);
+        assert!(stored.pop_up_on_boss);
         assert!(stored.overlay_click_through);
     }
 
@@ -557,6 +592,24 @@ mod tests {
         assert!(state.set_boss_settings(Some(5), Some(0), None, 0).is_err());
         assert_eq!(state.with_combat(|c| c.settings().boss_lock_secs), before);
         assert!(!state.unlock());
+    }
+
+    #[test]
+    fn desktop_startup_defaults_and_preferences_survive_other_saves() {
+        let state = AppState::with_storage(None, None);
+        assert!(!state.start_with_windows());
+        assert!(state.pop_up_on_boss());
+        state.set_start_with_windows(true);
+        state.set_pop_up_on_boss(false);
+        state.set_reset_after_secs(40);
+        let settings = state.live(0).settings;
+        assert!(settings.start_with_windows);
+        assert!(!settings.pop_up_on_boss);
+        let stored = StoredSettings::from(settings);
+        let decoded: StoredSettings = serde_json::from_str(&serde_json::to_string(&stored).unwrap()).unwrap();
+        assert_eq!(stored, decoded);
+        assert!(decoded.start_with_windows);
+        assert!(!decoded.pop_up_on_boss);
     }
 
     #[test]
