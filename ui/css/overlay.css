@@ -187,8 +187,7 @@ body.narrow-sm .seg .seg-short { display: inline; }
 
 .timer { flex: 0 0 auto; font-size: 1.1rem; font-weight: 500; color: var(--muted); }
 
-.tools { flex: 0 0 auto; display: none; gap: 0.3rem; }
-.card:hover .tools { display: flex; }
+.tools { flex: 0 0 auto; display: flex; gap: 0.3rem; }
 .tool {
   flex: 0 0 auto;
   width: 1.9rem;
