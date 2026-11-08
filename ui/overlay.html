@@ -26,18 +26,18 @@
           <button type="button" data-view="heal" class="heal" title="Healing"><span class="seg-full">Heal</span><span class="seg-short" aria-hidden="true">H</span></button>
         </span>
         <span class="timer" id="timer">00:00</span>
-        <button class="tool app-only" id="close" type="button" title="Close the overlay">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        </button>
-        <button class="tool reset" id="reset" type="button" title="Reset fight">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.4 8a5.4 5.4 0 1 1-1.6-3.8M13.4 2.6v2.8h-2.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <button class="tool save app-only" id="save-session" type="button" title="Save session" disabled>
+          <svg class="idle" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7M4.8 6.6 8 9.8l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="done" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.4 6.4 11.6 12.8 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <button class="tool app-only" id="open-meter" type="button" title="Open the detailed meter">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9 2h5v5M14 2 8 8M12 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <button class="tool save app-only" id="save-session" type="button" title="Save session" disabled>
-          <svg class="idle" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7M4.8 6.6 8 9.8l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <svg class="done" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.4 6.4 11.6 12.8 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <button class="tool reset" id="reset" type="button" title="Reset fight">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.4 8a5.4 5.4 0 1 1-1.6-3.8M13.4 2.6v2.8h-2.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="tool app-only" id="close" type="button" title="Close the overlay">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
       </header>
     </div>
