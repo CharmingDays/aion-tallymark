@@ -156,6 +156,8 @@ body {
   cursor: pointer;
 }
 .lock-chip:hover { filter: brightness(1.15); }
+.lock-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0 0.3rem; }
+.lock-chip svg { width: 0.95rem; height: 0.95rem; flex: 0 0 auto; }
 .lock-chip[hidden] { display: none; }
 
 .seg {

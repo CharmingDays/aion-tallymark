@@ -97,11 +97,20 @@
     return Math.max(1, Math.min(MAX_ROWS, Math.floor((room + 0.6 * rem) / (ROW_PITCH_REM * rem))));
   }
 
+  const LOCK_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.2" fill="currentColor"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+
   function paintBoss(m) {
     const lock = m.lock || null;
     const chip = $('lock-chip');
     chip.hidden = !lock;
-    chip.textContent = window.bossLock.chipText(lock);
+    // Compact: a lock icon, plus the seconds left once the boss is dead.
+    const secs = lock && !lock.engaged ? String(Math.max(0, Math.ceil((lock.remaining_ms || 0) / 1000))) : '';
+    const key = lock ? `${lock.engaged}|${secs}` : '';
+    if (chip.dataset.key !== key) {
+      chip.dataset.key = key;
+      chip.innerHTML = lock ? `${LOCK_ICON}${secs ? `<span>${secs}</span>` : ''}` : '';
+    }
+    chip.setAttribute('aria-label', window.bossLock.chipText(lock) ? `Boss lock ${window.bossLock.chipText(lock)}` : 'Boss lock');
     chip.title = window.bossLock.chipTitle(lock);
     $('target-defeated').hidden = !window.bossLock.defeated(m) || naming.editing();
   }
