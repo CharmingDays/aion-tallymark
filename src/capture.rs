@@ -54,6 +54,7 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
     let mut spawns = SpawnDebug::from_env();
     let mut deaths = DeathDebug::from_env();
     let mut cube_discovery = crate::cube_discovery::CubeDiscovery::from_env();
+    let mut position_debug = crate::position_debug::PositionDebug::from_env();
     let mut cube_flow = None;
     while let Ok(segment) = rx.recv() {
         state.with_capture(|capture| capture.segments = capture.segments.saturating_add(1));
@@ -69,6 +70,11 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
             continue;
         }
         let now = now_ms();
+        let direction = match assembler.locked_port() {
+            Some(port) if segment.sport == port => crate::position_debug::Direction::Server,
+            Some(port) if segment.dport == port => crate::position_debug::Direction::Client,
+            _ => crate::position_debug::Direction::Unknown,
+        };
         for frame in framed {
             let events = decode::parse_packet(&frame.packet);
             let locks = events.iter().any(|event| match event {
@@ -96,6 +102,9 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
                     };
                     if let Some(log) = cube_discovery.as_mut() {
                         log.observe(packet, &found, cubes, now, cube_flow == Some(flow));
+                    }
+                    if let Some(log) = position_debug.as_mut() {
+                        log.observe(packet, &found, cubes.player_id(), direction, cube_flow == Some(flow), now);
                     }
                 }
             });

@@ -134,3 +134,23 @@ The wider existing JS suite has an unrelated baseline failure in
 `tests/js/boss-lock.test.js`: it expects `Locked 10s` while the unchanged compact
 chip implementation returns `10s`. Neither that test nor its implementation was
 changed in this feature.
+
+## Finding the player's position (debug)
+
+Distance and direction need the local player's position, which no decoder
+reads yet. To collect data for it, start the meter elevated with
+`AION2DPS_DEBUG_POSITION=1` (works alongside `AION2DPS_DEBUG_CUBES=2`).
+Lines go to `%LOCALAPPDATA%\aion2dps\position-debug.jsonl` (stops at 64 MB
+or 400,000 lines):
+
+- `player`: server packets that contain your entity id, with the offsets of
+  the id (`player_id_at`, from the opcode), `is_player` when the packet is
+  about you, and every f32 triple that looks like world coordinates
+  (`triples`, offset `at` from the opcode).
+- `self_spawn`: the `33 36` self spawn.
+- `cube`: hidden-cube spawn positions; `raw` is in the same units as the
+  triples (centimetres), `position_m` in metres.
+- `outbound`: short hex of frames you send to the server.
+
+Walk in a straight line, stop, turn, use a skill, and walk up to a cube so
+positions can be lined up. It only reads packets; nothing is sent.
