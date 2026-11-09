@@ -154,3 +154,19 @@ or 400,000 lines):
 
 Walk in a straight line, stop, turn, use a skill, and walk up to a cube so
 positions can be lined up. It only reads packets; nothing is sent.
+
+## Distance and closer/farther
+
+The alert shows the 3D distance from you to the cube, e.g.
+`Hidden Cube · 105 m · getting closer`.
+
+- Your position comes from your own skill-use packets (`2A 38` / `2B 38`
+  where the caster is you; the position follows the second copy of your id).
+  The game does not send your own walking, so the distance updates when you
+  use a skill, typically every few seconds in the open world.
+- The cube position comes from its `34 36` spawn (centimetres, ×0.01 = m).
+- "getting closer" / "getting farther" only flips after the distance moved
+  4 m, so small jitter does not flicker it.
+- After 12 s without a new position the alert says `last known 105 m`.
+- No compass direction yet: the game's axis directions are not confirmed.
+- Cubes usually spawn when you are about 100 m away.

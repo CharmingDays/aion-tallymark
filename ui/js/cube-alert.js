@@ -12,6 +12,15 @@
     return [...latest.values()].filter((a) => !dismissed.has(key(a)) && now >= a.ts_ms && now - a.ts_ms < TTL[a.status])
       .sort((a, b) => b.sequence - a.sequence)[0] || null;
   }
+  /** " · 105 m · getting closer", or " · last known 105 m" once the player
+   * position is old (no new fix for ~12 s). Empty without a distance. */
+  function distanceText(a) {
+    if (typeof a.distance_m !== 'number' || !Number.isFinite(a.distance_m) || a.distance_m < 0) return '';
+    const m = `${Math.round(a.distance_m)} m`;
+    if (a.distance_stale) return ` \u00b7 last known ${m}`;
+    const trend = a.trend === 'closer' ? ' \u00b7 getting closer' : a.trend === 'farther' ? ' \u00b7 getting farther' : '';
+    return ` \u00b7 ${m}${trend}`;
+  }
   function text(a) {
     const type = a.cube_type || 'Hidden Cube';
     if (a.status === 'opened') {
@@ -19,9 +28,7 @@
       return { title: 'Cube opened', subline: `${type} \u00b7 Opened by ${who}` };
     }
     if (a.status === 'gone') return { title: 'Cube no longer nearby', subline: `${type} \u00b7 Out of range` };
-    const distance = Number.isFinite(a.distance_m) && a.distance_m >= 0 && /^(N|NE|E|SE|S|SW|W|NW)$/.test(a.direction || '')
-      ? ` \u00b7 ${Math.round(a.distance_m)}m ${a.direction}` : '';
-    return { title: 'Hidden Cube nearby', subline: `${type}${distance}` };
+    return { title: 'Hidden Cube nearby', subline: `${type}${distanceText(a)}` };
   }
   function create(element, timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) }) {
     const dismissed = new Set();
@@ -58,7 +65,7 @@
       },
     };
   }
-  const api = { select, text, key, create };
+  const api = { select, text, key, create, distanceText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.cubeAlert = api;
 })(typeof window !== 'undefined' ? window : globalThis);

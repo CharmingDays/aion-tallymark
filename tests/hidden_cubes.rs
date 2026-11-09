@@ -99,7 +99,7 @@ fn malformed_and_embedded_marker_bytes_do_not_alert() {
     assert!(observations(&packet([0x21, 0x8d], 1234, &[0]), &p).is_empty());
 }
 #[test]
-fn synthetic_calibrated_positions_produce_distance_then_hide_when_player_stale() {
+fn synthetic_calibrated_positions_produce_distance_then_go_last_known() {
     let mut p = profile();
     p.position = Some(layout());
     let mut d = Detector::new(p);
@@ -113,10 +113,15 @@ fn synthetic_calibrated_positions_produce_distance_then_hide_when_player_stale()
     feed(&mut d, &pos(1000, 0., 0., 0.), 0);
     let a = d.alerts(1);
     assert_eq!(a[0].distance_m, Some(5));
-    assert_eq!(a[0].direction, Some("NE"));
-    assert_eq!(d.alerts(PLAYER_FRESH_MS + 1)[0].distance_m, None);
-    feed(&mut d, &pos(1000, 0., 0., 0.), 3000);
-    assert_eq!(d.alerts(3000)[0].distance_m, Some(5));
+    assert_eq!(a[0].direction, None, "no compass until the axes are confirmed");
+    assert!(!a[0].distance_stale);
+    // No new fix: the last distance stays, marked as last known.
+    let late = d.alerts(DISTANCE_STALE_MS + 1);
+    assert_eq!(late[0].distance_m, Some(5));
+    assert!(late[0].distance_stale);
+    assert_eq!(late[0].distance_age_ms, Some(DISTANCE_STALE_MS + 1));
+    feed(&mut d, &pos(1000, 0., 0., 0.), 20_000);
+    assert!(!d.alerts(20_000)[0].distance_stale);
 }
 #[test]
 fn unknown_or_nonfinite_positions_are_never_used() {
@@ -197,49 +202,89 @@ fn calibrated_spawn_position_can_supply_stationary_cube_coordinates() {
     feed(&mut d, &packet([0x40, 0x36], 1234, &tail), 0);
     assert_eq!(d.alerts(0)[0].distance_m, Some(5));
 }
+fn hex(s: &str) -> Vec<u8> {
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
+}
+// Captured 2026-11-09 (local player 5034 / 3511 / 11478), framed again here.
+const CAST_11: &str = "2a38aa27011143e7000000c8000000000000004e856dc1a1010000aa270100b04619478261f8c5318ed946";
+const CAST_13: &str = "2a38aa2701133c032b0000d0070000000000008c1f6dc1a1010000aa27014d04000000ed3607473ef4d8c60911b446";
+const CAST_2B_13: &str = "2b38b71b1340f7f816091027000000000000647e78c0a1010000b71b017fb2e80002c56f82466bb28b467c4d1c47";
+const CAST_2B_11: &str = "2b38d65911471fc6eb02ffffffffffffffff8075d52abb030000d65901028b566cc4de6566440018cdc6";
+fn round(p: Position) -> [i64; 3] {
+    [p.east, p.north, p.elevation].map(|v| (v * 100.0).round() as i64)
+}
 #[test]
-fn all_eight_world_compass_directions_are_consistent() {
-    let mut d = Detector::new(profile());
-    d.observe_packet(
-        &packet([0x4a, 0x36], 1000, &[]),
-        &[Event::You { id: 1000 }],
-        0,
-    );
+fn skill_use_packets_give_the_casters_position_in_both_layouts() {
+    let (id, p) = cast_position(&encode_frame(&hex(CAST_11))).unwrap();
+    assert_eq!((id, round(p)), (5034, [39239, -7948, 27847]));
+    let (id, p) = cast_position(&encode_frame(&hex(CAST_13))).unwrap();
+    assert_eq!((id, round(p)), (5034, [34615, -27770, 23049]));
+    let (id, p) = cast_position(&encode_frame(&hex(CAST_2B_13))).unwrap();
+    assert_eq!((id, round(p)), (3511, [16696, 17881, 40013]));
+    let (id, p) = cast_position(&encode_frame(&hex(CAST_2B_11))).unwrap();
+    assert_eq!((id, round(p)), (11478, [-945, 922, -26252]));
+    // Truncated, unframed or other opcodes are ignored.
+    let short = hex(CAST_11);
+    assert!(cast_position(&encode_frame(&short[..short.len() - 4])).is_none());
+    assert!(cast_position(&hex(CAST_11)).is_none());
+    let mut other = hex(CAST_11);
+    other[1] = 0x37;
+    assert!(cast_position(&encode_frame(&other)).is_none());
+}
+fn cube_at(d: &mut Detector, east: f64, north: f64, elevation: f64) {
+    feed(d, &spawn(1234, 0x123456), 0);
     d.apply(
-        Observation::Position {
-            id: 1000,
-            position: Position {
-                east: 0.,
-                north: 0.,
-                elevation: 0.,
-            },
-        },
+        Observation::Position { id: 1234, position: Position { east, north, elevation } },
         0,
     );
-    feed(&mut d, &spawn(1234, 0x123456), 0);
-    for (x, y, dir) in [
-        (0., 1., "N"),
-        (1., 1., "NE"),
-        (1., 0., "E"),
-        (1., -1., "SE"),
-        (0., -1., "S"),
-        (-1., -1., "SW"),
-        (-1., 0., "W"),
-        (-1., 1., "NW"),
-    ] {
-        d.apply(
-            Observation::Position {
-                id: 1234,
-                position: Position {
-                    east: x,
-                    north: y,
-                    elevation: 0.,
-                },
-            },
-            0,
-        );
-        assert_eq!(d.relative(1234, 0).unwrap().1, dir);
+}
+/// A 2A 38 cast by `caster` at `x` metres east of the origin.
+fn cast_at(caster: i32, x: f32) -> Vec<u8> {
+    let mut body = vec![0x2A, 0x38];
+    body.extend(encode_varint(caster as u32));
+    body.extend([1, 0x11, 0x43, 0xE7, 0, 0, 0, 0xC8, 0, 0, 0, 0, 0, 0, 0, 0x4E, 0x85, 0x6D, 0xC1, 0xA1, 1, 0, 0]);
+    body.extend(encode_varint(caster as u32));
+    body.extend([1, 0]);
+    for n in [x * 100.0, 0.0, 0.0] {
+        body.extend(n.to_le_bytes());
     }
+    encode_frame(&body)
+}
+#[test]
+fn own_casts_update_distance_with_hysteresis_and_others_are_ignored() {
+    let mut d = Detector::new(profile());
+    d.observe_packet(&packet([0x4a, 0x36], 5034, &[]), &[Event::You { id: 5034 }], 0);
+    cube_at(&mut d, 0., 0., 0.);
+    assert_eq!(d.alerts(0)[0].distance_m, None, "no player fix yet");
+    feed(&mut d, &cast_at(5034, 100.), 1_000);
+    let a = &d.alerts(1_000)[0];
+    assert_eq!((a.distance_m, a.trend), (Some(100), None));
+    // Someone else's cast never moves the player.
+    feed(&mut d, &cast_at(7777, 10.), 1_500);
+    assert_eq!(d.alerts(1_500)[0].distance_m, Some(100));
+    // 3 m closer: below the step, no trend yet.
+    feed(&mut d, &cast_at(5034, 97.), 2_000);
+    let a = &d.alerts(2_000)[0];
+    assert_eq!((a.distance_m, a.trend), (Some(97), None));
+    // 5 m from the anchor (100): closer.
+    feed(&mut d, &cast_at(5034, 95.), 3_000);
+    assert_eq!(d.alerts(3_000)[0].trend, Some("closer"));
+    // Jitter back by 3 m keeps "closer".
+    feed(&mut d, &cast_at(5034, 98.), 4_000);
+    assert_eq!(d.alerts(4_000)[0].trend, Some("closer"));
+    // 4 m past the anchor (95): farther.
+    feed(&mut d, &cast_at(5034, 99.), 5_000);
+    let a = &d.alerts(5_000)[0];
+    assert_eq!((a.distance_m, a.trend, a.distance_stale), (Some(99), Some("farther"), false));
+    assert!(d.alerts(5_000 + DISTANCE_STALE_MS + 1)[0].distance_stale);
+}
+#[test]
+fn distance_is_three_dimensional() {
+    let mut d = Detector::new(profile());
+    d.observe_packet(&packet([0x4a, 0x36], 5034, &[]), &[Event::You { id: 5034 }], 0);
+    cube_at(&mut d, 0., 0., 40.);
+    feed(&mut d, &cast_at(5034, 30.), 0);
+    assert_eq!(d.alerts(0)[0].distance_m, Some(50));
 }
 
 #[test]

@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
 pub const PLAYER_FRESH_MS: i64 = 2_000;
+/// A distance older than this is shown as "last known".
+pub const DISTANCE_STALE_MS: i64 = 12_000;
+/// Closer/farther only flips after the distance moved this far (metres).
+pub const TREND_STEP_M: f64 = 4.0;
 pub const ALERT_MS: i64 = 12_000;
 const MAX_TRACKED: usize = 4096;
 
@@ -177,6 +181,82 @@ pub fn observations(packet: &[u8], protocol: &Protocol) -> Vec<Observation> {
     }
     out
 }
+/// The caster's own position from a skill-use packet, verified against
+/// captures on 2026-11-09 (it matched the self spawn and moved with the
+/// player; cube spawns use the same centimetre units):
+///
+/// `2A 38 <caster> 01 <flag> ... <u64 ms> <caster> <tail> <f32 east> <f32 north> <f32 elev>`
+/// `2B 38 <caster> <flag> ... <u64 ms> <caster> <tail> <f32 ×3>`
+///
+/// `flag` 0x11: `tail` is `<n> 00|02`; 0x13: `tail` is `01 <LE24> 00 <kind>`.
+/// The position follows the SECOND copy of the caster id. Values in metres.
+pub fn cast_position(packet: &[u8]) -> Option<(i32, Position)> {
+    let mut at = 0;
+    let len = try_read_varint(packet, &mut at)?;
+    if crate::framing::frame_size(len, at as i32) != Some(packet.len()) {
+        return None;
+    }
+    let op = packet.get(at..at + 2)?;
+    let mut pos = at + 2;
+    let caster = try_read_varint(packet, &mut pos)?;
+    if !(1..=9_999_999).contains(&caster) {
+        return None;
+    }
+    let flag = match op {
+        [0x2A, 0x38] => {
+            if *packet.get(pos)? != 1 {
+                return None;
+            }
+            *packet.get(pos + 1)?
+        }
+        [0x2B, 0x38] => *packet.get(pos)?,
+        _ => return None,
+    };
+    let skip = match flag {
+        0x11 => 2,
+        0x13 => 6,
+        _ => return None,
+    };
+    let needle = encode_id(caster);
+    let mut from = pos;
+    while let Some(found) = packet
+        .get(from..)
+        .and_then(|rest| rest.windows(needle.len()).position(|w| w == needle.as_slice()))
+    {
+        let id_at = from + found;
+        from = id_at + 1;
+        // A real second copy is preceded by the u64 timestamp's zero high bytes.
+        if id_at < 2 || packet[id_at - 2..id_at] != [0, 0] {
+            continue;
+        }
+        let tail = id_at + needle.len();
+        let ok = match flag {
+            0x11 => matches!(packet.get(tail + 1), Some(0 | 2)),
+            _ => packet.get(tail) == Some(&1) && packet.get(tail + 4) == Some(&0),
+        };
+        if !ok {
+            continue;
+        }
+        let b = packet.get(tail + skip..tail + skip + 12)?;
+        let f = |o: usize| f32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]]) as f64 * 0.01;
+        let position = Position { east: f(0), north: f(4), elevation: f(8) };
+        return position.valid().then_some((caster, position));
+    }
+    None
+}
+fn encode_id(id: i32) -> Vec<u8> {
+    let mut value = id as u32;
+    let mut out = Vec::new();
+    loop {
+        let byte = (value & 0x7F) as u8;
+        value >>= 7;
+        if value == 0 {
+            out.push(byte);
+            return out;
+        }
+        out.push(byte | 0x80);
+    }
+}
 fn read_position(packet: &[u8], base: usize, layout: &PositionLayout) -> Option<Position> {
     if !layout.verified || !layout.units_to_meters.is_finite() || layout.units_to_meters <= 0.0 {
         return None;
@@ -262,7 +342,14 @@ pub struct CubeAlert {
     pub entity_id: i32,
     pub cube_type: String,
     pub distance_m: Option<u32>,
+    /// Never set: compass direction waits until the game's axes are confirmed.
     pub direction: Option<&'static str>,
+    /// "closer" / "farther" once the distance moved by TREND_STEP_M.
+    pub trend: Option<&'static str>,
+    /// Age of the player position behind `distance_m`.
+    pub distance_age_ms: Option<i64>,
+    /// True after DISTANCE_STALE_MS without a new position: "last known".
+    pub distance_stale: bool,
     pub opened_by_id: Option<i32>,
     pub opened_by: Option<String>,
     pub opened_by_you: bool,
@@ -272,6 +359,37 @@ struct Tracked {
     name: String,
     position: Option<Position>,
     opened_by: Option<i32>,
+    range: Range,
+}
+/// Player-to-cube distance, recomputed on each new player fix.
+#[derive(Clone, Copy, Debug, Default)]
+struct Range {
+    /// Metres and the player fix's time.
+    last: Option<(f64, i64)>,
+    /// Distance at the last trend change; moves only past TREND_STEP_M.
+    anchor: Option<f64>,
+    trend: Option<&'static str>,
+}
+impl Range {
+    fn update(&mut self, meters: f64, fix_ts: i64) {
+        self.last = Some((meters, fix_ts));
+        match self.anchor {
+            None => self.anchor = Some(meters),
+            Some(anchor) if meters <= anchor - TREND_STEP_M => {
+                self.trend = Some("closer");
+                self.anchor = Some(meters);
+            }
+            Some(anchor) if meters >= anchor + TREND_STEP_M => {
+                self.trend = Some("farther");
+                self.anchor = Some(meters);
+            }
+            _ => {}
+        }
+    }
+}
+fn distance(a: Position, b: Position) -> f64 {
+    let (dx, dy, dz) = (a.east - b.east, a.north - b.north, a.elevation - b.elevation);
+    (dx * dx + dy * dy + dz * dz).sqrt()
 }
 pub struct Detector {
     pub protocol: Protocol,
@@ -334,6 +452,12 @@ impl Detector {
                 _ => {}
             }
         }
+        // Only the local player's own casts move the player position.
+        if let Some((caster, position)) = cast_position(packet) {
+            if Some(caster) == self.player {
+                self.player_fix(position, now);
+            }
+        }
         found
     }
     pub fn apply(&mut self, event: Observation, now: i64) {
@@ -361,8 +485,16 @@ impl Detector {
                     }
                 }
                 self.positions.insert(id, (position, now));
+                if Some(id) == self.player {
+                    self.player_fix(position, now);
+                    return;
+                }
+                let player = self.player.and_then(|p| self.positions.get(&p)).copied();
                 if let Some(cube) = self.entities.get_mut(&id) {
                     cube.position = Some(position);
+                    if let Some((at, ts)) = player {
+                        cube.range.update(distance(position, at), ts);
+                    }
                 }
             }
             Observation::Spawn { id, template } => {
@@ -395,6 +527,12 @@ impl Detector {
                     .get(&id)
                     .filter(|(_, ts)| fresh(now, *ts))
                     .map(|(p, _)| *p);
+                let mut range = Range::default();
+                if let (Some(cube), Some((at, ts))) =
+                    (position, self.player.and_then(|p| self.positions.get(&p)).copied())
+                {
+                    range.update(distance(cube, at), ts);
+                }
                 self.entities.insert(
                     id,
                     Tracked {
@@ -402,6 +540,7 @@ impl Detector {
                         name: name.clone(),
                         position,
                         opened_by: None,
+                        range,
                     },
                 );
                 self.emit(id, name, "detected", now);
@@ -440,6 +579,9 @@ impl Detector {
             cube_type: name,
             distance_m: None,
             direction: None,
+            trend: None,
+            distance_age_ms: None,
+            distance_stale: false,
             opened_by_id: None,
             opened_by: None,
             opened_by_you: false,
@@ -448,23 +590,27 @@ impl Detector {
             self.alerts.pop_front();
         }
     }
-    pub fn relative(&self, id: i32, now: i64) -> Option<(u32, &'static str)> {
-        let (player, ts) = self.positions.get(&self.player?)?;
-        if !fresh(now, *ts) {
-            return None;
+    /// A new position for the local player: every tracked cube's distance
+    /// is recomputed from it (3D, metres).
+    fn player_fix(&mut self, position: Position, now: i64) {
+        if let Some(player) = self.player {
+            self.positions.insert(player, (position, now));
         }
-        let cube = self.entities.get(&id)?.position?;
-        let dx = cube.east - player.east;
-        let dy = cube.north - player.north;
-        let dz = cube.elevation - player.elevation;
-        let meters = (dx * dx + dy * dy + dz * dz).sqrt();
-        let compass = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-        let sector = ((dx.atan2(dy).to_degrees() + 360.0 + 22.5) / 45.0).floor() as usize % 8;
-        Some((meters.round() as u32, compass[sector]))
+        for cube in self.entities.values_mut() {
+            if let Some(at) = cube.position {
+                cube.range.update(distance(at, position), now);
+            }
+        }
+    }
+    /// Last known distance (rounded metres), trend, and the fix's age.
+    pub fn relative(&self, id: i32, now: i64) -> Option<(u32, Option<&'static str>, i64)> {
+        let range = &self.entities.get(&id)?.range;
+        let (meters, ts) = range.last?;
+        Some((meters.round() as u32, range.trend, now.saturating_sub(ts).max(0)))
     }
     pub fn player_position(&self, now: i64) -> Option<Position> {
         let (position, ts) = self.positions.get(&self.player?)?;
-        fresh(now, *ts).then_some(*position)
+        (now >= *ts && now - *ts <= DISTANCE_STALE_MS).then_some(*position)
     }
     pub fn player_id(&self) -> Option<i32> {
         self.player
@@ -483,9 +629,11 @@ impl Detector {
             .cloned()
             .map(|mut a| {
                 if a.status == "detected" {
-                    if let Some((distance, direction)) = self.relative(a.entity_id, now) {
+                    if let Some((distance, trend, age)) = self.relative(a.entity_id, now) {
                         a.distance_m = Some(distance);
-                        a.direction = Some(direction);
+                        a.trend = trend;
+                        a.distance_age_ms = Some(age);
+                        a.distance_stale = age > DISTANCE_STALE_MS;
                     }
                 }
                 a

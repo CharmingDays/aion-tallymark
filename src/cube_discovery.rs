@@ -98,7 +98,7 @@ impl CubeDiscovery {
         let line = json!({"ts_ms":now, "opcode":format!("{:02x}{:02x}", op[0],op[1]),
             "entity_id":id,"template_candidates":templates,"wire_verified":false,
             "server_identified":server_identified,"player_entity_id":detector.player_id(),"player_position":player_position,
-            "distance_m":relative.map(|r| r.0),"direction":relative.map(|r| r.1),
+            "distance_m":relative.map(|r| r.0),"trend":relative.and_then(|r| r.1),"distance_age_ms":relative.map(|r| r.2),
             "observations":found,"opcode_hex":hex,"len":packet.len(),
             "truncated":packet.len()-at > shown.len()})
         .to_string();

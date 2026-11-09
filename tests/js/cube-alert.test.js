@@ -3,7 +3,14 @@ const assert=require('node:assert/strict');
 const cube=require('../../ui/js/cube-alert.js');
 const a={sequence:1,ts_ms:1000,entity_id:1234,status:'detected',cube_type:'Synthetic cube',distance_m:null,direction:null};
 test('unknown distance is omitted rather than 0m or NaN',()=>assert.deepEqual(cube.text(a),{title:'Hidden Cube nearby',subline:'Synthetic cube'}));
-test('fresh distance and compass appear',()=>assert.equal(cube.text({...a,distance_m:12,direction:'NE'}).subline,'Synthetic cube \u00b7 12m NE'));
+test('fresh distance appears without a compass',()=>assert.equal(cube.text({...a,distance_m:12,direction:'NE'}).subline,'Synthetic cube \u00b7 12 m'));
+test('trend shows only while the distance is fresh',()=>{
+  assert.equal(cube.text({...a,distance_m:105.4,trend:'closer'}).subline,'Synthetic cube \u00b7 105 m \u00b7 getting closer');
+  assert.equal(cube.text({...a,distance_m:99,trend:'farther'}).subline,'Synthetic cube \u00b7 99 m \u00b7 getting farther');
+  assert.equal(cube.text({...a,distance_m:99,trend:'closer',distance_stale:true}).subline,'Synthetic cube \u00b7 last known 99 m');
+  assert.equal(cube.text({...a,distance_m:0,trend:'sideways'}).subline,'Synthetic cube \u00b7 0 m');
+  assert.equal(cube.text({...a,distance_m:'5'}).subline,'Synthetic cube');
+});
 test('gone is clearly distinct',()=>assert.deepEqual(cube.text({...a,status:'gone'}),{title:'Cube no longer nearby',subline:'Synthetic cube \u00b7 Out of range'}));
 test('dismiss and removal never resurrect older detected state',()=>{
  const gone={...a,sequence:2,status:'gone',ts_ms:2000};
