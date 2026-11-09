@@ -29,11 +29,35 @@ if ($task) { $task | Unregister-ScheduledTask -Confirm:$false }
         .creation_flags(0x0800_0000)
         .output()
         .map_err(|e| format!("Could not update Start with Windows: {e}"))?;
-    if !output.status.success() {
-        let details = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Could not update Start with Windows. Run the app as administrator. {}", details.trim()));
+    if output.status.success() {
+        return Ok(());
     }
-    Ok(())
+    // Not elevated: rerun the same script once through a UAC prompt.
+    run_elevated(&script)
+}
+
+#[cfg(windows)]
+fn run_elevated(script: &str) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    let path = std::env::temp_dir().join(format!("aion2dps-startup-{}.ps1", std::process::id()));
+    std::fs::write(&path, script).map_err(|e| format!("Could not update Start with Windows: {e}"))?;
+    let file = path.to_string_lossy().replace('\'', "''");
+    let launcher = format!(
+        "$p = Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{file}\"'; exit $p.ExitCode"
+    );
+    let result = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &launcher])
+        .creation_flags(0x0800_0000)
+        .output();
+    let _ = std::fs::remove_file(&path);
+    let output = result.map_err(|e| format!("Could not update Start with Windows: {e}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err("Could not update Start with Windows. Approve the administrator prompt, or run the app as administrator.".into())
+    }
 }
 
 #[cfg(not(windows))]
