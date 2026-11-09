@@ -631,7 +631,7 @@ fn push_snapshots(app: AppHandle, state: Arc<AppState>, windowless: bool) {
                         })
                     });
                 if popup.observe(&keys, !windowless && state.pop_up_on_boss(), hidden) {
-                    let _ = app.emit("tray-show", ());
+                    let _ = app.emit("boss-show", ());
                 }
                 if !app.webview_windows().is_empty() {
                     let _ = app.emit("live", live);
@@ -822,6 +822,10 @@ fn main() {
             } else if !windowless {
                 show_meter(&handle)?;
             }
+            let boss_handle = handle.clone();
+            handle.listen("boss-show", move |_| {
+                tray_watch::reveal_overlay_quietly(&boss_handle, build_overlay);
+            });
             let show_handle = handle.clone();
             handle.listen("tray-show", move |_| {
                 tray_watch::reveal_overlay(&show_handle, build_overlay);

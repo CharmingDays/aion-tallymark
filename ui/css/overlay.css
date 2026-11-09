@@ -110,7 +110,7 @@ body {
 
 /* Tags sit in the header row; collapse when empty. */
 .tags {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
@@ -137,7 +137,7 @@ body {
 .tags:has(.lock-chip:not([hidden])) .target-badge:not(.defeated) { display: none; }
 .target-badge.defeated { background: var(--accent-hl); color: var(--accent); }
 .lock-chip {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   padding: 0 0.45rem;
   border: 0;
