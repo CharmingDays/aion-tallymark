@@ -76,6 +76,9 @@ pub struct Session {
     /// User-given label. Missing or empty falls back to [`Target::label`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Stagger breaks on the target, ms from `started_at`. Empty for older files.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stagger_breaks: Vec<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -113,6 +116,13 @@ pub struct Player {
     pub heal: i64,
     #[serde(default)]
     pub hps: i64,
+    /// Estimated stagger points. 0 (left out) for older files.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub stagger: f64,
+}
+
+fn is_zero(value: &f64) -> bool {
+    *value == 0.0
 }
 
 /// `[t_ms, actor index, damage, flags, skill id]`.
@@ -454,6 +464,7 @@ mod tests {
                 crit_pct: 50.0,
                 heal: 900,
                 hps: 75,
+                stagger: 0.0,
             }],
             actors: vec!["Aria".into()],
             events: vec![Event(0, 0, 1_000, FLAG_CRIT, 100), Event(12_000, 0, 2_000, FLAG_DOT, 200)],
@@ -462,6 +473,7 @@ mod tests {
             you: None,
             heals: vec![Heal(500, 0, 400, 0, 300), Heal(1_500, 0, 500, FLAG_HOT, 300)],
             name: None,
+            stagger_breaks: Vec::new(),
         }
     }
 

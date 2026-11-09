@@ -85,10 +85,13 @@ struct Skill {
     perfects: i32,
     doubles: i32,
     multi_hits: i32,
+    /// Estimated stagger points, see [`Combat::attribute_stagger`].
+    stagger: f64,
 }
 
 impl Skill {
     fn add(&mut self, other: &Skill) {
+        self.stagger += other.stagger;
         self.damage += other.damage;
         self.hits += other.hits;
         self.crits += other.crits;
@@ -109,9 +112,16 @@ struct Actor {
     hits: i32,
     crits: i32,
     backs: i32,
+    /// Estimated stagger points on this target.
+    stagger: f64,
 }
 
 impl Actor {
+    fn add_stagger(&mut self, skill: i32, points: f64) {
+        self.skills.entry((skill, false)).or_default().stagger += points;
+        self.stagger += points;
+    }
+
     fn add_hit(&mut self, hit: &Hit) {
         let skill_id = crate::skills::canonical_skill_id(hit.skill);
         let skill = self.skills.entry((skill_id, hit.dot)).or_default();
@@ -135,6 +145,7 @@ impl Actor {
     }
 
     fn merge(&mut self, other: &Actor) {
+        self.stagger += other.stagger;
         self.damage += other.damage;
         self.hits += other.hits;
         self.crits += other.crits;
@@ -162,7 +173,44 @@ struct Target {
     removed: bool,
     /// Crossed the boss damage threshold. Stays set for the fight.
     boss: bool,
+    stagger: TargetStagger,
 }
+
+/// Stagger in this fight for one target. Points are estimates: the server
+/// sends only the gauge, so each drop is shared out over the hits that
+/// landed since the gauge's previous update.
+#[derive(Debug, Clone, Default)]
+struct TargetStagger {
+    /// When the gauge broke.
+    breaks: Vec<i64>,
+    /// `(actor, raw skill, canonical skill)` of hits since the last gauge update.
+    pending: Vec<(i32, i32, i32)>,
+    /// Gauge drops with no hit to put them on.
+    unattributed: f64,
+    /// Every gauge drop seen in this fight.
+    total: f64,
+}
+
+/// The last gauge the server sent for an entity.
+#[derive(Debug, Clone, Copy)]
+struct Gauge {
+    max: u32,
+    remaining: u32,
+    frozen: bool,
+    /// Broke and not refilled yet.
+    broken: bool,
+}
+
+/// Hits kept per target between two gauge updates.
+const STAGGER_PENDING_LIMIT: usize = 64;
+/// Gauges kept. When full, only the ones in the current fight are kept.
+const GAUGE_LIMIT: usize = 4_096;
+/// Distinct values remembered per skill.
+const STAGGER_VALUES_PER_SKILL: usize = 32;
+/// Skills with a learned stagger value.
+const STAGGER_SKILL_LIMIT: usize = 4_096;
+/// A second break record this soon after one is the same break.
+const BREAK_DEDUPE_MS: i64 = 1_000;
 
 impl Target {
     fn clear_death(&mut self) {
@@ -252,6 +300,8 @@ pub struct SkillRow {
     pub perfects: i32,
     pub doubles: i32,
     pub multi_hits: i32,
+    /// Estimated stagger points.
+    pub stagger: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -269,7 +319,29 @@ pub struct PlayerRow {
     pub heal: i64,
     pub misses: i32,
     pub resists: i32,
+    /// Estimated stagger points on the counted targets.
+    pub stagger: f64,
     pub skills: Vec<SkillRow>,
+}
+
+/// The current target's stagger gauge. Per-player points are estimates.
+#[derive(Debug, Clone, Serialize)]
+pub struct StaggerView {
+    pub max: u32,
+    pub remaining: u32,
+    /// `max - remaining`: how full the bar is.
+    pub fill: u32,
+    /// State 3: the gauge does not move.
+    pub frozen: bool,
+    /// Broke and not refilled yet.
+    pub broken: bool,
+    pub breaks: usize,
+    /// Break times, ms from the start of the fight.
+    pub break_ms: Vec<i64>,
+    /// Points shared out to players (estimated).
+    pub estimated: f64,
+    /// Points no hit could be matched to.
+    pub unattributed: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -400,6 +472,8 @@ pub struct Snapshot {
     pub healers: Vec<HealerRow>,
     /// Set while the view is held on a dead boss.
     pub lock: Option<LockView>,
+    /// The target's stagger gauge, when the server sent one.
+    pub stagger: Option<StaggerView>,
 }
 
 #[derive(Debug, Clone)]
@@ -453,6 +527,11 @@ pub struct Combat {
     released: Option<i32>,
     /// In the frozen view of a post-death lock: the boss it shows.
     pinned: Option<i32>,
+    /// Latest stagger gauge per entity. Kept across fights.
+    gauges: HashMap<i32, Gauge>,
+    /// Gauge drops seen after exactly one hit: raw skill id to
+    /// `(points, times seen)`. Kept across fights.
+    stagger_learned: HashMap<i32, Vec<(u32, u32)>>,
 }
 
 impl Default for Combat {
@@ -499,6 +578,8 @@ impl Combat {
             engage_lock: true,
             released: None,
             pinned: None,
+            gauges: HashMap::new(),
+            stagger_learned: HashMap::new(),
         }
     }
 
@@ -1001,6 +1082,13 @@ impl Combat {
             }
             Event::LiveHp { id, hp } => self.apply_live_hp(id, hp, now),
             Event::Removed { id, flag } => self.apply_removed(id, flag, now),
+            Event::Stagger {
+                id,
+                max,
+                remaining,
+                frozen,
+            } => self.apply_stagger(id, max, remaining, frozen),
+            Event::StaggerBreak { id } => self.apply_stagger_break(id, now),
             Event::SummonSpawn {
                 summon,
                 owner,
@@ -1090,6 +1178,175 @@ impl Combat {
         }
     }
 
+    /// `05 E0` gauge. A drop is shared out over the hits since the last update.
+    fn apply_stagger(&mut self, id: i32, max: u32, remaining: u32, frozen: bool) {
+        if self.gauges.len() >= GAUGE_LIMIT && !self.gauges.contains_key(&id) {
+            let targets = &self.targets;
+            self.gauges.retain(|id, _| targets.contains_key(id));
+            if self.gauges.len() >= GAUGE_LIMIT {
+                self.gauges.clear();
+            }
+        }
+        let prev = self.gauges.get(&id).filter(|g| !g.broken).map(|g| g.remaining);
+        self.gauges.insert(
+            id,
+            Gauge {
+                max,
+                remaining,
+                frozen,
+                broken: false,
+            },
+        );
+        match prev {
+            Some(prev) if remaining < prev => self.attribute_stagger(id, prev - remaining),
+            _ => {
+                if let Some(target) = self.targets.get_mut(&id) {
+                    target.stagger.pending.clear();
+                }
+            }
+        }
+    }
+
+    /// `05 E0 <id> 00 03 02`. What was left on the gauge goes to the last hits.
+    fn apply_stagger_break(&mut self, id: i32, now: i64) {
+        let left = match self.gauges.get_mut(&id) {
+            Some(gauge) if !gauge.broken => {
+                let left = gauge.remaining;
+                gauge.remaining = 0;
+                gauge.broken = true;
+                gauge.frozen = false;
+                left
+            }
+            Some(_) => 0,
+            None => {
+                self.gauges.insert(
+                    id,
+                    Gauge {
+                        max: 0,
+                        remaining: 0,
+                        frozen: false,
+                        broken: true,
+                    },
+                );
+                0
+            }
+        };
+        if left > 0 {
+            self.attribute_stagger(id, left);
+        } else if let Some(target) = self.targets.get_mut(&id) {
+            target.stagger.pending.clear();
+        }
+        if let Some(target) = self.targets.get_mut(&id) {
+            let repeat = target
+                .stagger
+                .breaks
+                .last()
+                .is_some_and(|at| now.saturating_sub(*at) < BREAK_DEDUPE_MS);
+            if !repeat {
+                target.stagger.breaks.push(now);
+            }
+        }
+    }
+
+    /// The skill's most common single-hit drop.
+    fn learned_stagger(&self, skill: i32) -> Option<f64> {
+        self.stagger_learned
+            .get(&skill)?
+            .iter()
+            .max_by_key(|(value, seen)| (*seen, std::cmp::Reverse(*value)))
+            .map(|(value, _)| f64::from(*value))
+    }
+
+    fn learn_stagger(&mut self, skill: i32, points: u32) {
+        if self.stagger_learned.len() >= STAGGER_SKILL_LIMIT
+            && !self.stagger_learned.contains_key(&skill)
+        {
+            self.stagger_learned.clear();
+        }
+        let values = self.stagger_learned.entry(skill).or_default();
+        if let Some((_, seen)) = values.iter_mut().find(|(value, _)| *value == points) {
+            *seen = seen.saturating_add(1);
+        } else if values.len() < STAGGER_VALUES_PER_SKILL {
+            values.push((points, 1));
+        }
+    }
+
+    /// One hit takes the whole drop and teaches its skill's value. Several
+    /// share it by their skills' learned values (an unknown skill counts as
+    /// the average known one), or evenly when none is known.
+    fn attribute_stagger(&mut self, id: i32, drop: u32) {
+        let Some(target) = self.targets.get_mut(&id) else {
+            return;
+        };
+        let pending = std::mem::take(&mut target.stagger.pending);
+        let points = f64::from(drop);
+        target.stagger.total += points;
+        if pending.is_empty() {
+            target.stagger.unattributed += points;
+            return;
+        }
+        if let [(_, raw, _)] = pending.as_slice() {
+            self.learn_stagger(*raw, drop);
+        }
+        let known: Vec<Option<f64>> = pending
+            .iter()
+            .map(|(_, raw, _)| self.learned_stagger(*raw))
+            .collect();
+        let found: Vec<f64> = known.iter().flatten().copied().collect();
+        let fallback = if found.is_empty() {
+            1.0
+        } else {
+            found.iter().sum::<f64>() / found.len() as f64
+        };
+        let weights: Vec<f64> = known
+            .iter()
+            .map(|w| w.unwrap_or(fallback).max(0.0))
+            .collect();
+        let sum: f64 = weights.iter().sum();
+        let Some(target) = self.targets.get_mut(&id) else {
+            return;
+        };
+        for ((actor, _, skill), weight) in pending.iter().zip(&weights) {
+            let share = if sum > 0.0 {
+                points * weight / sum
+            } else {
+                points / pending.len() as f64
+            };
+            target.actors.entry(*actor).or_default().add_stagger(*skill, share);
+        }
+    }
+
+    fn stagger_view(&self, id: i32) -> Option<StaggerView> {
+        let gauge = self.gauges.get(&id).copied();
+        let target = self.targets.get(&id);
+        let stagger = target.map(|t| &t.stagger);
+        if gauge.is_none() && stagger.map_or(true, |s| s.breaks.is_empty()) {
+            return None;
+        }
+        let gauge = gauge.unwrap_or(Gauge {
+            max: 0,
+            remaining: 0,
+            frozen: false,
+            broken: false,
+        });
+        let start = self.first_ms.unwrap_or(0);
+        let total = stagger.map_or(0.0, |s| s.total);
+        let unattributed = stagger.map_or(0.0, |s| s.unattributed);
+        Some(StaggerView {
+            max: gauge.max,
+            remaining: gauge.remaining,
+            fill: gauge.max.saturating_sub(gauge.remaining),
+            frozen: gauge.frozen,
+            broken: gauge.broken,
+            breaks: stagger.map_or(0, |s| s.breaks.len()),
+            break_ms: stagger
+                .map(|s| s.breaks.iter().map(|at| at.saturating_sub(start).max(0)).collect())
+                .unwrap_or_default(),
+            estimated: round1(total - unattributed),
+            unattributed: round1(unattributed),
+        })
+    }
+
     /// The npc table says boss, or the target took the threshold in damage.
     fn target_is_boss(&self, id: i32) -> bool {
         let Some(target) = self.targets.get(&id) else {
@@ -1129,6 +1386,12 @@ impl Combat {
             return;
         }
 
+        // A DoT or HoT record naming a spawned monster as its source is not
+        // player damage or healing (seen with player skill ids on bosses).
+        if hit.dot && !hit.taken && self.is_npc(hit.actor) {
+            return;
+        }
+
         if hit.taken {
             if hit.total() > 0 {
                 self.note_player(hit.target);
@@ -1139,7 +1402,10 @@ impl Combat {
         }
 
         if plausible_heal(hit.heal) {
-            self.note_player(hit.actor);
+            // `05 38` names its source unreliably: a tick never makes a player.
+            if !hit.dot {
+                self.note_player(hit.actor);
+            }
             self.record_heal(now, hit);
             if hit.total() == 0 {
                 self.note(now, hit, false, true);
@@ -1152,7 +1418,9 @@ impl Combat {
         }
 
         self.touch(now);
-        self.note_player(hit.actor);
+        if !hit.dot {
+            self.note_player(hit.actor);
+        }
         let spawned = self.spawn_types.get(&hit.target).copied();
         let target = self.targets.entry(hit.target).or_default();
         if spawned.is_some() {
@@ -1164,6 +1432,10 @@ impl Combat {
             target.boss = true;
         }
         target.actors.entry(hit.actor).or_default().add_hit(hit);
+        if !hit.dot && target.stagger.pending.len() < STAGGER_PENDING_LIMIT {
+            let canonical = crate::skills::canonical_skill_id(hit.skill);
+            target.stagger.pending.push((hit.actor, hit.skill, canonical));
+        }
         // A late tick on a dead target does not take Current away from a live one.
         if target.died_ms.is_none() || self.last_target.is_none() {
             self.last_target = Some(hit.target);
@@ -1251,6 +1523,9 @@ impl Combat {
     }
 
     fn note_player(&mut self, id: i32) {
+        if self.is_npc(id) {
+            return;
+        }
         if self.players.len() >= PLAYER_ID_LIMIT && !self.players.contains(&id) {
             self.players.clear();
         }
@@ -1486,6 +1761,7 @@ impl Combat {
             encounter_hps: per_second(encounter_heal, active_ms),
             healers,
             lock: None,
+            stagger: target_id.and_then(|id| self.stagger_view(id)),
         }
     }
 
@@ -1527,6 +1803,7 @@ impl Combat {
                     crit_pct: 0.0,
                     heal: healer.heal,
                     hps: healer.hps,
+                    stagger: 0.0,
                 });
             }
         }
@@ -1567,6 +1844,7 @@ impl Combat {
                 name: player.name.clone(),
                 total: player.damage,
                 dps: player.dps,
+                stagger: player.stagger,
                 share: round1(player.pct * 100.0),
                 crit_pct: if player.hits > 0 {
                     round1(f64::from(player.crits) * 100.0 / f64::from(player.hits))
@@ -1613,6 +1891,11 @@ impl Combat {
             events,
             truncated: self.events_truncated,
             name: None,
+            stagger_breaks: snap
+                .stagger
+                .as_ref()
+                .map(|stagger| stagger.break_ms.clone())
+                .unwrap_or_default(),
         })
     }
 
@@ -1634,6 +1917,7 @@ impl Combat {
                 perfects: row.perfects,
                 doubles: row.doubles,
                 multi_hits: row.multi_hits,
+                stagger: round1(row.stagger),
             })
             .collect();
         skills.sort_by(|a, b| b.damage.cmp(&a.damage));
@@ -1655,6 +1939,7 @@ impl Combat {
             heal: self.heal.get(&id).copied().unwrap_or(0),
             misses: self.misses.get(&id).copied().unwrap_or(0),
             resists: self.resists.get(&id).copied().unwrap_or(0),
+            stagger: round1(actor.stagger),
             skills,
         }
     }
@@ -1758,7 +2043,19 @@ impl Combat {
             .filter(|name| !name.is_empty() && !name.chars().all(|c| c.is_ascii_digit()))
     }
 
+    /// A spawned monster (NPC spawn record or a kept monster type) that is
+    /// not a summon. Never a player.
+    fn is_npc(&self, id: i32) -> bool {
+        !self.links.contains_key(&id)
+            && !self.summons.contains(&id)
+            && (self.spawn_types.contains_key(&id)
+                || self.targets.get(&id).is_some_and(|t| t.monster_type.is_some()))
+    }
+
     fn is_player(&self, id: i32) -> bool {
+        if self.is_npc(id) {
+            return false;
+        }
         let owner = self.named_id(id);
         self.self_id == Some(owner)
             || self.players.contains(&owner)
@@ -3191,5 +3488,159 @@ mod tests {
         let snap = combat.snapshot(11_500);
         assert_eq!(snap.target_id, Some(BOSS_ID));
         assert!(snap.lock.unwrap().engaged);
+    }
+
+    fn packet(hex: &str) -> Vec<u8> {
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    fn feed(combat: &mut Combat, bytes: &[u8], now: i64) {
+        for event in crate::decode::parse_packet(bytes) {
+            combat.apply(event, now);
+        }
+    }
+
+    fn framed(body: &str) -> Vec<u8> {
+        crate::framing::encode_frame(&packet(body))
+    }
+
+    /// The 2026-11-09 07:32 CST field boss 37138: its spawn has a `30 00`
+    /// field, and `05 38` ticks name it as the source with player skill
+    /// ids. It used to be taken for a player, so HP 0 and the flag-3
+    /// removal were both ignored.
+    #[test]
+    fn the_field_boss_kill_from_the_capture_is_detected() {
+        const BOSS: i32 = 37_138;
+        let mut combat = Combat::new();
+        combat.set_boss_lock_secs(35, 0);
+        combat.set_name(979, "Modollove", false);
+        combat.set_name(1769, "yiny", false);
+        feed(
+            &mut combat,
+            &framed("413692a2020c30008c1b230000020a3a18c75ec6b8c600d958470098b24300fe01a0e7d904a0e7d904640000006400000000000000000000000000000000000000409c0000409c0000010000000000000000000000000000000000000006021101819698"),
+            0,
+        );
+        assert_eq!(combat.monster_type(BOSS), Some(2_300_812));
+        combat.apply_hit(&hit(979, BOSS, 12_350_000, 900_000), 1_000);
+        // DoT damage and a HoT naming the boss as their source.
+        feed(&mut combat, &framed("0538d3070a92a202ec04875ef147b40b812cb800"), 1_500);
+        feed(&mut combat, &framed("0538e90d0b92a202df032ff5fe4bc30ec42cb18cc200"), 1_600);
+        assert!(!combat.is_player(BOSS), "a spawned monster is never a player");
+        combat.apply_hit(&hit(1769, BOSS, 12_350_000, 900_000), 2_000);
+        assert_eq!(combat.snapshot(2_000).target_label, "Vakron");
+
+        feed(&mut combat, &packet("14008d92a2020201000000000000000000"), 3_000);
+        combat.apply_hit(&hit(979, BOSS, 12_350_000, 256), 3_100);
+        feed(&mut combat, &packet("0b423692a2020003"), 3_500);
+
+        assert!(combat.is_locked(), "the boss lock begins");
+        let snap = combat.snapshot(3_500);
+        assert_eq!(snap.target_id, Some(BOSS));
+        assert!(snap.target_defeated);
+        assert!(snap.lock.as_ref().is_some_and(|lock| !lock.engaged && lock.secs == 35));
+        let session = combat.session(3_500).unwrap();
+        assert!(session.target.defeated);
+        assert_eq!(session.target.died_ms, Some(2_000));
+    }
+
+    #[test]
+    fn a_monster_dot_on_a_player_still_counts_as_damage_taken() {
+        let mut combat = Combat::new();
+        combat.apply(Event::Spawn { id: 37_138, monster_type: 2_300_812 }, 0);
+        let mut dot = hit(37_138, 979, 1_200_016, 500);
+        dot.dot = true;
+        dot.taken = true;
+        combat.apply_hit(&dot, 0);
+        assert_eq!(combat.taken.get(&979), Some(&500));
+    }
+
+    fn gauge(id: i32, remaining: u32) -> Event {
+        Event::Stagger { id, max: 1_200, remaining, frozen: false }
+    }
+
+    fn stagger_of(snap: &Snapshot, name: &str) -> f64 {
+        snap.players.iter().find(|p| p.name == name).map_or(0.0, |p| p.stagger)
+    }
+
+    #[test]
+    fn a_gauge_drop_after_one_hit_goes_to_that_hit_and_teaches_the_skill() {
+        let mut combat = spawned();
+        combat.set_name(1, "Aria", false);
+        combat.set_name(2, "Boros", false);
+        combat.apply(gauge(BOSS_ID, 1_200), 0);
+        combat.apply_hit(&hit(1, BOSS_ID, 11_170_450, 1_000), 100);
+        combat.apply(gauge(BOSS_ID, 1_195), 100);
+        combat.apply_hit(&hit(2, BOSS_ID, 12_040_240, 1_000), 200);
+        combat.apply(gauge(BOSS_ID, 1_192), 200);
+        assert_eq!(combat.learned_stagger(11_170_450), Some(5.0));
+        assert_eq!(combat.learned_stagger(12_040_240), Some(3.0));
+
+        // Two hits, one drop: shared 5 : 3 by the learned values.
+        combat.apply_hit(&hit(1, BOSS_ID, 11_170_450, 1_000), 300);
+        combat.apply_hit(&hit(2, BOSS_ID, 12_040_240, 1_000), 300);
+        combat.apply(gauge(BOSS_ID, 1_176), 300);
+        let snap = combat.snapshot(300);
+        assert_eq!(stagger_of(&snap, "Aria"), 15.0);
+        assert_eq!(stagger_of(&snap, "Boros"), 9.0);
+        let aria = snap.players.iter().find(|p| p.name == "Aria").unwrap();
+        assert_eq!(aria.skills[0].stagger, 15.0);
+        let view = snap.stagger.unwrap();
+        assert_eq!((view.max, view.remaining, view.fill), (1_200, 1_176, 24));
+        assert_eq!((view.estimated, view.unattributed, view.breaks), (24.0, 0.0, 0));
+    }
+
+    #[test]
+    fn unknown_skills_split_evenly_and_a_drop_with_no_hit_is_unattributed() {
+        let mut combat = spawned();
+        combat.set_name(1, "Aria", false);
+        combat.set_name(2, "Boros", false);
+        combat.apply_hit(&hit(1, BOSS_ID, 100, 1_000), 0);
+        combat.apply(gauge(BOSS_ID, 1_200), 0);
+        combat.apply(gauge(BOSS_ID, 1_190), 50);
+        combat.apply_hit(&hit(1, BOSS_ID, 100, 1_000), 100);
+        combat.apply_hit(&hit(2, BOSS_ID, 200, 1_000), 100);
+        combat.apply(gauge(BOSS_ID, 1_180), 100);
+        let snap = combat.snapshot(100);
+        assert_eq!(stagger_of(&snap, "Aria"), 5.0);
+        assert_eq!(stagger_of(&snap, "Boros"), 5.0);
+        let view = snap.stagger.unwrap();
+        assert_eq!((view.estimated, view.unattributed), (10.0, 10.0));
+    }
+
+    #[test]
+    fn a_break_is_counted_and_the_refill_is_not_stagger() {
+        let mut combat = spawned();
+        combat.set_name(1, "Aria", false);
+        combat.apply_hit(&hit(1, BOSS_ID, 100, 1_000), 0);
+        combat.apply(gauge(BOSS_ID, 3), 0);
+        combat.apply_hit(&hit(1, BOSS_ID, 100, 1_000), 1_000);
+        combat.apply(Event::StaggerBreak { id: BOSS_ID }, 1_000);
+        combat.apply(Event::StaggerBreak { id: BOSS_ID }, 1_200);
+        let view = combat.snapshot(1_000).stagger.unwrap();
+        assert!(view.broken);
+        assert_eq!((view.breaks, view.break_ms.clone(), view.fill), (1, vec![1_000], 1_200));
+        assert_eq!(stagger_of(&combat.snapshot(1_000), "Aria"), 3.0);
+
+        combat.apply_hit(&hit(1, BOSS_ID, 100, 1_000), 3_000);
+        combat.apply(gauge(BOSS_ID, 1_200), 6_000);
+        let snap = combat.snapshot(6_000);
+        let view = snap.stagger.unwrap();
+        assert!(!view.broken);
+        assert_eq!((view.remaining, view.estimated), (1_200, 3.0));
+        combat.apply(Event::Stagger { id: BOSS_ID, max: 1_200, remaining: 1_200, frozen: true }, 7_000);
+        assert!(combat.snapshot(7_000).stagger.unwrap().frozen);
+        assert_eq!(combat.session(7_000).unwrap().stagger_breaks, vec![1_000]);
+    }
+
+    #[test]
+    fn no_gauge_means_no_stagger_view() {
+        let mut combat = spawned();
+        combat.apply_hit(&hit(1, BOSS_ID, 100, 1_000), 0);
+        assert!(combat.snapshot(0).stagger.is_none());
+        combat.apply(gauge(ADD_ID, 1_000), 0);
+        assert!(combat.snapshot(0).stagger.is_none(), "another entity's gauge");
     }
 }

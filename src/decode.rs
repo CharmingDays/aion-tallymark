@@ -120,6 +120,19 @@ pub enum Event {
     /// new (or reused), so any old link on it is stale. Combat links it in
     /// this order: `owner`, then the player named `owner_name`, then
     /// `cast_owner`.
+    /// `05 E0 <id> 03 01 <u32 max> <u32 remaining> <state>`: a boss's
+    /// stagger gauge. `remaining` counts down to 0 as hits land; state 3
+    /// means the gauge is frozen (it does not move).
+    Stagger {
+        id: i32,
+        max: u32,
+        remaining: u32,
+        frozen: bool,
+    },
+    /// `05 E0 <id> 00 03 02`: the stagger gauge broke.
+    StaggerBreak {
+        id: i32,
+    },
     SummonSpawn {
         summon: i32,
         /// The kind byte, the low byte of the spawn mask.
@@ -156,7 +169,42 @@ pub fn parse_packet(packet: &[u8]) -> Vec<Event> {
     if let Some(hp) = parse_hp(packet) {
         events.push(hp);
     }
+    if let Some(stagger) = parse_stagger(packet) {
+        events.push(stagger);
+    }
     events
+}
+
+/// `<len> 05 E0 <id varint>` then either the gauge
+/// `03 01 <u32 le max> <u32 le remaining> <02|03>` or the break `00 03 02`.
+fn parse_stagger(packet: &[u8]) -> Option<Event> {
+    let at = opcode_at(packet)?;
+    if packet.get(at..at + 2)? != [0x05, 0xE0] {
+        return None;
+    }
+    let id = read_varint(packet, at + 2);
+    if id.length <= 0 || !(100..=9_999_999).contains(&id.value) {
+        return None;
+    }
+    let rest = packet.get(at + 2 + id.length as usize..)?;
+    if rest == [0x00, 0x03, 0x02] {
+        return Some(Event::StaggerBreak { id: id.value });
+    }
+    if rest.len() != 11 || rest[0] != 0x03 || rest[1] != 0x01 {
+        return None;
+    }
+    let max = u32::from_le_bytes(rest[2..6].try_into().ok()?);
+    let remaining = u32::from_le_bytes(rest[6..10].try_into().ok()?);
+    let state = rest[10];
+    if !(1..=10_000_000).contains(&max) || remaining > max || !matches!(state, 0x02 | 0x03) {
+        return None;
+    }
+    Some(Event::Stagger {
+        id: id.value,
+        max,
+        remaining,
+        frozen: state == 0x03,
+    })
 }
 
 /// Names, plus which entity is you. `depth` counts bundles already opened.
@@ -208,8 +256,9 @@ fn npc_spawn(packet: &[u8]) -> Option<(i32, u32)> {
     npc_record_at(packet, at + 2)
 }
 
-/// `<id varint> <flag> <u16 le 0x20|0x2C> <type u24 le> <00 00|00 40> 02`.
-/// Any flag byte is accepted; seen so far are 04, 05, 0C, 0D, 0F.
+/// `<id varint> <flag> <u16 le 0x20|0x22|0x2C|0x30> <type u24 le> <00 00|00 40> 02`.
+/// Any flag byte is accepted; seen so far are 04, 05, 0C, 0D, 0F. Field
+/// boss spawns use 0x22 and 0x30.
 fn npc_record_at(data: &[u8], at: usize) -> Option<(i32, u32)> {
     let id = read_varint(data, at);
     if id.length <= 0 || !(100..=9_999_999).contains(&id.value) {
@@ -217,7 +266,7 @@ fn npc_record_at(data: &[u8], at: usize) -> Option<(i32, u32)> {
     }
     let start = at + id.length as usize;
     let f = data.get(start..start + 9)?;
-    let shape = matches!(u16::from_le_bytes([f[1], f[2]]), 0x20 | 0x2C)
+    let shape = matches!(u16::from_le_bytes([f[1], f[2]]), 0x20 | 0x22 | 0x2C | 0x30)
         && f[6] == 0x00
         && matches!(f[7], 0x00 | 0x40)
         && f[8] == 0x02;
@@ -1763,5 +1812,47 @@ mod tests {
             assert_eq!(spawns_of(&packet), vec![(19107, 0x200b81)], "flag {flag:02x}");
             assert!(names_of(&packet).is_empty(), "flag {flag:02x}");
         }
+    }
+
+    /// Field boss 37138 (type 2300812), 2026-11-09 07:28:09 CST. Its u16
+    /// field is 30 00; the two bosses before it used 22 00.
+    const BOSS_SPAWN_37138: &str = "413692a2020c30008c1b230000020a3a18c75ec6b8c600d958470098b24300fe01a0e7d904a0e7d904640000006400000000000000000000000000000000000000409c0000409c0000010000000000000000000000000000000000000006021101819698";
+
+    #[test]
+    fn a_field_boss_spawn_with_a_30_or_22_field_is_a_spawn() {
+        let packet = crate::framing::encode_frame(&hex(BOSS_SPAWN_37138));
+        assert_eq!(spawns_of(&packet), vec![(37138, 2_300_812)]);
+        assert!(!parse_packet(&packet)
+            .iter()
+            .any(|event| matches!(event, Event::SummonSpawn { .. })));
+        let mut older = hex(BOSS_SPAWN_37138);
+        older[6] = 0x22;
+        let older = crate::framing::encode_frame(&older);
+        assert_eq!(spawns_of(&older), vec![(37138, 2_300_812)]);
+    }
+
+    fn staggers_of(body: &str) -> Vec<Event> {
+        parse_packet(&crate::framing::encode_frame(&hex(body)))
+            .into_iter()
+            .filter(|event| matches!(event, Event::Stagger { .. } | Event::StaggerBreak { .. }))
+            .collect()
+    }
+
+    #[test]
+    fn a_05_e0_record_is_the_stagger_gauge_or_its_break() {
+        assert_eq!(
+            staggers_of("05e092a2020301b0040000a604000002"),
+            vec![Event::Stagger { id: 37138, max: 1200, remaining: 1190, frozen: false }]
+        );
+        assert_eq!(
+            staggers_of("05e092a2020301b0040000db01000003"),
+            vec![Event::Stagger { id: 37138, max: 1200, remaining: 475, frozen: true }]
+        );
+        assert_eq!(staggers_of("05e092a202000302"), vec![Event::StaggerBreak { id: 37138 }]);
+        // Remaining above max, an unknown state, or extra bytes: not a gauge.
+        assert!(staggers_of("05e092a2020301b0040000b104000002").is_empty());
+        assert!(staggers_of("05e092a2020301b0040000a604000004").is_empty());
+        assert!(staggers_of("05e092a2020301b0040000a60400000200").is_empty());
+        assert!(staggers_of("05e092a20200030200").is_empty());
     }
 }

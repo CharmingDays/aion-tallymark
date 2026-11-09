@@ -59,6 +59,7 @@ static FILES: &[(&str, &str, &[u8])] = &[
     ("/js/config-panel.js", JS, include_bytes!("../ui/js/config-panel.js")),
     ("/js/toast-queue.js", JS, include_bytes!("../ui/js/toast-queue.js")),
     ("/js/heal-share.js", JS, include_bytes!("../ui/js/heal-share.js")),
+    ("/js/stagger-view.js", JS, include_bytes!("../ui/js/stagger-view.js")),
     ("/js/npcap-help.js", JS, include_bytes!("../ui/js/npcap-help.js")),
     ("/js/ability-share.js", JS, include_bytes!("../ui/js/ability-share.js")),
     ("/js/replay-trim.js", JS, include_bytes!("../ui/js/replay-trim.js")),

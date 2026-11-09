@@ -55,9 +55,17 @@
         <button type="button" data-view="heal" class="heal">Heal</button>
       </div>
     </div>
+    <div class="stagger" id="stagger" hidden>
+      <span class="label">Stagger</span>
+      <span class="stagger-bar" id="stagger-bar-wrap"><i id="stagger-bar"></i></span>
+      <span class="stagger-gauge" id="stagger-gauge"></span>
+      <span class="stagger-state" id="stagger-state" hidden></span>
+      <span class="stagger-breaks" id="stagger-breaks">Breaks <b id="stagger-break-count">0</b></span>
+      <span class="stagger-note" title="The game sends only the target's stagger gauge. Each drop is shared out over the hits that landed just before it, using what each skill took off the gauge when it hit alone.">Player stagger is estimated</span>
+    </div>
     <div class="scroll">
-      <table class="players-table">
-        <colgroup>
+      <table class="players-table" id="players-table">
+        <colgroup id="players-cols">
           <col class="c-rank"><col><col class="c-num"><col class="c-num"><col class="c-pct"><col class="c-pct"><col class="c-share">
         </colgroup>
         <thead>
@@ -67,7 +75,7 @@
           <tr class="empty-row"><td colspan="7">No hits yet. Damage is read from game packets, not from memory.</td></tr>
         </tbody>
         <tfoot id="group-row" hidden>
-          <tr><td></td><td>Group total</td><td id="foot-total">0</td><td id="foot-dps">0</td><td>100%</td><td id="foot-crit">—</td><td></td></tr>
+          <tr><td></td><td>Group total</td><td id="foot-total">0</td><td id="foot-dps">0</td><td>100%</td><td id="foot-crit">—</td><td class="stag" id="foot-stagger"></td><td></td></tr>
         </tfoot>
       </table>
     </div>
@@ -200,6 +208,7 @@
 <script src="js/config-panel.js"></script>
 <script src="js/heal-share.js"></script>
 <script src="js/npcap-help.js"></script>
+<script src="js/stagger-view.js"></script>
 <script src="js/meter.js"></script>
 </body>
 </html>

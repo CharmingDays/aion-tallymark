@@ -268,6 +268,25 @@ th:first-child, td:first-child { text-align: left; }
 .feed-skill { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .heal-amount { color: var(--heal); font-weight: 600; }
 
+/* Stagger (current target) */
+.stagger { flex: 0 0 auto; display: flex; align-items: center; gap: var(--s-3); margin: 0 0 var(--s-3); padding: var(--s-2) var(--s-3); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md); font-size: 12px; color: var(--muted); white-space: nowrap; min-width: 0; }
+.stagger[hidden] { display: none; }
+.stagger .label { font-size: 9px; }
+.stagger-bar { flex: 1 1 160px; min-width: 80px; max-width: 360px; height: 8px; border-radius: 4px; background: var(--surface); overflow: hidden; }
+.stagger-bar > i { display: block; height: 100%; width: 0; border-radius: inherit; background: #F5B14C; transition: width 0.2s ease-out; }
+.stagger-bar.frozen > i { background: var(--faint); }
+.stagger-bar.broken > i { background: var(--danger); }
+.stagger-gauge { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.stagger-state { padding: 0 5px; border-radius: 4px; background: var(--surface); color: var(--muted); font-size: 10px; font-weight: 600; line-height: 16px; letter-spacing: 0.04em; text-transform: uppercase; }
+.stagger-state[hidden] { display: none; }
+.stagger-state.frozen { background: rgba(138, 147, 163, 0.2); color: var(--text); }
+.stagger-state.broken { background: rgba(248, 113, 113, 0.18); color: var(--danger); }
+.stagger-breaks b { color: var(--text); font-weight: 600; }
+.stagger-note { margin-left: auto; color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.players-table .c-stag { width: 96px; }
+.players-table:not(.has-stagger) .stag { display: none; }
+.stag-meta { color: #F5B14C; }
+
 /* Skill panel */
 .tiles { flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-2); }
 .tile { display: flex; flex-direction: column; gap: 2px; padding: var(--s-2h) var(--s-3); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md); min-width: 0; }

@@ -8,6 +8,8 @@
   const heals = window.healShare;
   const DAMAGE_HEADINGS = ['RANK', 'NAME', 'TOTAL DAMAGE', 'DPS', '% OF GROUP', 'CRIT %', 'SHARE'];
   const HEAL_HEADINGS = ['#', 'NAME', 'TOTAL HEAL', 'HPS', '% OF GROUP', '', 'SHARE'];
+  const COLS = '<col class="c-rank"><col><col class="c-num"><col class="c-num"><col class="c-pct"><col class="c-pct">';
+  const sv = window.staggerView;
 
   let selected = null;
   // Config panel edits wait for its single Save button.
@@ -68,13 +70,13 @@
     document.querySelectorAll('#modes button').forEach((b) => b.classList.toggle('on', b.dataset.mode === m.mode));
   }
 
-  function renderPlayers(m) {
+  function renderPlayers(m, stagger) {
     const body = $('players');
     const players = m.players;
     $('group-row').hidden = !players.length;
     if (!players.length) {
       $('players-sub').textContent = 'No hits yet';
-      body.innerHTML = '<tr class="empty-row"><td colspan="7">No hits yet. Damage is read from game packets, not from memory.</td></tr>';
+      body.innerHTML = `<tr class="empty-row"><td colspan="${stagger ? 8 : 7}">No hits yet. Damage is read from game packets, not from memory.</td></tr>`;
       return;
     }
     const targets = m.targets_shown === 1 ? '1 target' : `${m.targets_shown} targets`;
@@ -89,6 +91,7 @@
         <td class="dim">${short(p.dps)}</td>
         <td class="dim">${pct(p.pct, 1)}</td>
         <td class="dim">${rate(p.crits, p.hits)}</td>
+        <td class="dim stag" title="Estimated stagger points">${sv.points(p.stagger, full) || '\u2014'}</td>
         <td><span class="share"><i style="width:${Math.round((p.damage / top) * 1000) / 10}%"></i></span></td>
       </tr>`;
     }).join('');
@@ -97,6 +100,25 @@
     $('foot-total').textContent = short(m.encounter_damage);
     $('foot-dps').textContent = short(m.encounter_dps);
     $('foot-crit').textContent = rate(crits, hits);
+    $('foot-stagger').textContent = stagger ? sv.points(stagger.estimated, full) || '\u2014' : '';
+  }
+
+  function renderStagger(stagger) {
+    const box = $('stagger');
+    box.hidden = !stagger;
+    if (!stagger) return;
+    $('stagger-bar').style.width = `${sv.fillPct(stagger)}%`;
+    $('stagger-bar-wrap').classList.toggle('broken', !!stagger.broken);
+    $('stagger-bar-wrap').classList.toggle('frozen', !stagger.broken && !!stagger.frozen);
+    $('stagger-gauge').textContent = sv.gaugeText(stagger, full);
+    const state = sv.stateText(stagger);
+    const stateEl = $('stagger-state');
+    stateEl.hidden = !state;
+    stateEl.textContent = state;
+    stateEl.className = `stagger-state ${state.toLowerCase()}`;
+    stateEl.title = state === 'Frozen' ? 'The gauge is not moving right now.' : state === 'Broken' ? 'Stagger broke. The gauge refills shortly.' : '';
+    $('stagger-break-count').textContent = String(stagger.breaks || 0);
+    $('stagger-breaks').title = sv.breaksTitle(stagger, clock);
   }
 
   function renderHealers(m) {
@@ -118,6 +140,7 @@
         <td class="dim">${short(h.hps)}/s</td>
         <td class="dim">${pct(h.pct, 1)}</td>
         <td></td>
+        <td class="stag"></td>
         <td><span class="share heal-share"><i style="width:${h.width}%"></i></span></td>
       </tr>`;
     }).join('');
@@ -179,7 +202,7 @@
     $('t-hits').textContent = full(player.hits);
     $('t-crit').textContent = rate(player.crits, player.hits);
     $('t-back').textContent = rate(player.backs, player.hits);
-    $('extras').innerHTML = `<span>DPS <b>${short(player.dps)}</b></span><span>Heal <b>${short(player.heal)}</b></span><span>Taken <b>${short(player.taken)}</b></span><span>Miss <b>${player.misses}</b></span><span>Resist <b>${player.resists}</b></span>`;
+    $('extras').innerHTML = `<span>DPS <b>${short(player.dps)}</b></span><span>Heal <b>${short(player.heal)}</b></span><span>Taken <b>${short(player.taken)}</b></span><span>Miss <b>${player.misses}</b></span><span>Resist <b>${player.resists}</b></span>${player.stagger > 0 ? `<span title="Estimated stagger points">Stagger <b>${sv.points(player.stagger, full)}</b></span>` : ''}`;
     if (!player.skills.length) {
       list.innerHTML = '<div class="empty">No skills recorded.</div>';
       return;
@@ -193,7 +216,7 @@
           <span class="skill-pct">${player.damage > 0 ? pct(s.damage / player.damage, 1) : '—'}</span>
         </div>
         <div class="skill-bar"><i style="width:${Math.round((s.damage / top) * 1000) / 10}%"></i></div>
-        <div class="skill-meta">${full(s.hits)} hits \u00b7 crit ${rate(s.crits, s.hits)} \u00b7 back ${rate(s.backs, s.hits)} \u00b7 perfect ${rate(s.perfects, s.hits)} \u00b7 double ${rate(s.doubles, s.hits)}</div>
+        <div class="skill-meta">${full(s.hits)} hits \u00b7 crit ${rate(s.crits, s.hits)} \u00b7 back ${rate(s.backs, s.hits)} \u00b7 perfect ${rate(s.perfects, s.hits)} \u00b7 double ${rate(s.doubles, s.hits)}${s.stagger > 0 ? ` \u00b7 <span class="stag-meta" title="Estimated stagger points">stagger ${sv.points(s.stagger, full)}</span>` : ''}</div>
       </div>`).join('');
   }
 
@@ -252,12 +275,19 @@
       selected = (you || heals.healerRows(healers)[0]).id;
     }
     document.querySelectorAll('#view button, #detail-view button').forEach((b) => b.classList.toggle('on', b.dataset.view === view));
-    $('players-headings').innerHTML = (healing ? HEAL_HEADINGS : DAMAGE_HEADINGS).map((h) => `<th>${h}</th>`).join('');
+    const stagger = sv.has(m.stagger) ? m.stagger : null;
+    const stagCol = !!stagger && !healing;
+    const headings = (healing ? HEAL_HEADINGS : DAMAGE_HEADINGS).map((h) => `<th>${h}</th>`);
+    headings.splice(6, 0, '<th class="stag" title="Estimated stagger points">STAGGER</th>');
+    $('players-headings').innerHTML = headings.join('');
+    $('players-cols').innerHTML = `${COLS}${stagCol ? '<col class="c-stag">' : ''}<col class="c-share">`;
+    $('players-table').classList.toggle('has-stagger', stagCol);
+    renderStagger(stagger);
     $('detail-title').textContent = healing ? 'Healing' : 'Damage by skill';
     ['tiles', 'extras', 'skills'].forEach((id) => { $(id).hidden = healing; });
     ['heal-tiles', 'heal-detail'].forEach((id) => { $(id).hidden = !healing; });
     if (healing) renderHealers(m);
-    else renderPlayers(m);
+    else renderPlayers(m, stagger);
     const player = m.players.find((p) => p.id === selected);
     if (healing) renderHealDetail(m, healers.find((h) => h.id === selected), player && player.name);
     else renderSkills(player);
