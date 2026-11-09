@@ -48,7 +48,9 @@
     // A frozen boss deliberately has no idle deadline. Never substitute the
     // regular reset setting for it: the boss hold is a separate clock.
     const bossHeld = Boolean(m.lock && !m.lock.engaged);
-    const resetSecs = bossHeld ? m.lock.secs : data.settings ? data.settings.reset_after_secs : 30;
+    const baseSecs = data.settings ? data.settings.reset_after_secs : 30;
+    const bossSecs = m.target_boss && data.settings ? data.settings.boss_lock_secs || 0 : 0;
+    const resetSecs = bossHeld ? m.lock.secs : Math.max(baseSecs, bossSecs);
     const hasFight = m.status !== 'idle' && m.encounter_damage > 0;
     const ended = hasFight && (bossHeld || m.status === 'paused' || m.target_hp === 0);
     const remaining = bossHeld ? m.lock.remaining_ms : m.reset_in_ms;

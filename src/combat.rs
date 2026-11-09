@@ -759,6 +759,23 @@ impl Combat {
         self.history.clear();
     }
 
+    /// Silence before the fight resets. A fight with a boss in it is held
+    /// for at least the boss lock time, so a kill the packets never confirm
+    /// still keeps the boss fight on screen as long as a confirmed one.
+    fn idle_reset_ms(&self) -> i64 {
+        let boss_fight = self.lock_secs > 0
+            && self
+                .targets
+                .iter()
+                .any(|(id, target)| target.damage > 0 && self.target_is_boss(*id));
+        if boss_fight {
+            self.reset_after_ms
+                .max((self.lock_secs as i64).saturating_mul(1000))
+        } else {
+            self.reset_after_ms
+        }
+    }
+
     /// Archive the current fight once silence reaches the reset setting.
     /// The fight behind a lock idles out on its own clock.
     pub fn tick(&mut self, now: i64) {
@@ -766,7 +783,7 @@ impl Combat {
         let Some(idle) = self.idle_since() else {
             return;
         };
-        if now.saturating_sub(idle) >= self.reset_after_ms {
+        if now.saturating_sub(idle) >= self.idle_reset_ms() {
             self.finish(now);
         }
     }
@@ -1251,7 +1268,7 @@ impl Combat {
     fn touch(&mut self, now: i64) {
         if let (Some(last), Some(idle)) = (self.last_ms, self.idle_since()) {
             let gap = now.saturating_sub(last);
-            if now.saturating_sub(idle) >= self.reset_after_ms {
+            if now.saturating_sub(idle) >= self.idle_reset_ms() {
                 self.finish(now);
             } else if gap < PAUSE_MS {
                 self.active_ms += gap;
@@ -1450,7 +1467,7 @@ impl Combat {
             encounter_dps,
             reset_in_ms: self
                 .idle_since()
-                .map(|idle| (idle + self.reset_after_ms - now).max(0)),
+                .map(|idle| (idle + self.idle_reset_ms() - now).max(0)),
             target_id,
             target_label,
             target_type,
