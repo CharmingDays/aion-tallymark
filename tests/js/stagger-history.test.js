@@ -36,3 +36,17 @@ test('breaks up to the playhead and their text', () => {
   assert.equal(sh.points(7.5, full), '~8');
   assert.equal(sh.points(0, full), '');
 });
+
+test('stagger is grouped by player name, most first, players with none left out', () => {
+  const acc = sh.advance(null, [[100, 0, 5, 11], [200, 1, 12, 22], [300, 0, 4, 12], [400, 3, 9, 33]], 4, 1000);
+  const rows = sh.byPlayer(acc, ['Zed', 'Amy', 'Bob', 'Cat']);
+  // Amy 12, then Cat and Zed tie on 9 and go A-Z; Bob has none.
+  assert.deepEqual(rows.map((r) => [r.i, r.name, r.points]), [[1, 'Amy', 12], [3, 'Cat', 9], [0, 'Zed', 9]]);
+  assert.deepEqual(sh.byPlayer(null, ['Zed']), []);
+  const maps = sh.skillMaps(acc);
+  assert.deepEqual([...maps[0].values()], [
+    { skill: 11, dot: false, damage: 5, hits: 0, crits: 0 },
+    { skill: 12, dot: false, damage: 4, hits: 0, crits: 0 },
+  ]);
+  assert.equal(maps[2].size, 0);
+});

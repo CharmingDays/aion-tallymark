@@ -63,6 +63,11 @@
   /** Stagger running totals (stagger-history.js) and whether the session has any. */
   const sh = window.staggerHistory;
   let sacc = null;
+  let staggerShown = '';
+  const tabOverflow = window.tabOverflow;
+  const TAB_NAMES = { players: 'Players', share: 'Ability share', heal: 'Healing', stagger: 'Stagger' };
+  /** px kept for the roster sub line beside the tabs. */
+  const SUB_MIN = 150;
   let hasStagger = false;
   const COLS = '<col class="c-rank"><col><col class="c-num"><col class="c-num"><col class="c-pct"><col class="c-pct">';
 
@@ -182,12 +187,17 @@
     series.damage = true;
     series.heal = hasHeals;
     paintSeries();
-    $('filter-heals').hidden = !hasHeals;
+    $('filter-heals').dataset.off = hasHeals ? '' : '1';
+    layoutFeedBar();
     hasStagger = sh.has(session);
     $('players-table').classList.toggle('has-stagger', hasStagger);
     $('players-cols').innerHTML = `${COLS}${hasStagger ? '<col class="c-stag">' : ''}<col class="c-share">`;
     $('s-stagger-stat').hidden = !hasStagger;
     $('s-stagger-total-stat').hidden = !hasStagger;
+    staggerShown = '';
+    document.querySelector('#tabs > [data-tab="stagger"]').dataset.off = hasStagger ? '' : '1';
+    if (!hasStagger && tab === 'stagger') setTab('players');
+    layoutTabs();
     renderSummary();
     renderChart();
     seek(0);
@@ -320,9 +330,128 @@
     renderPlayers();
     renderShare();
     renderHeal();
+    renderStagger();
     renderFeed();
     renderState();
   }
+
+  /** Stagger tab: estimated stagger per player and per ability, and the breaks, up to the playhead. */
+  function renderStagger(force) {
+    if (tab !== 'stagger' || !hasStagger) return;
+    const all = session.stagger_breaks || [];
+    const seen = sh.breaksUntil(all, playhead);
+    const key = `${sacc ? sacc.cursor : 0}|${seen.length}|${Math.floor(playhead / 1000)}`;
+    if (!force && key === staggerShown) return;
+    staggerShown = key;
+    const total = sacc ? sacc.total : 0;
+    $('roster-sub').textContent = `Group ${sh.points(total, full) || '—'} · ${seen.length} break${seen.length === 1 ? '' : 's'} · at ${clock(playhead)}`;
+    const rows = sh.byPlayer(sacc, session.actors);
+    const top = rows.length ? rows[0].points : 1;
+    $('stagger-rows').innerHTML = rows.length ? rows.map((p) => `<tr style="--pc:${pc(p.i)}" class="player${p.name === UNKNOWN ? ' unknown' : ''}">
+        <td><span class="name pname">${esc(p.name)}</span></td>
+        <td class="dmg stag-pts" title="Estimated stagger points">${sh.points(p.points, full)}</td>
+        <td class="stag-pct">${pct(p.points / total, 0)}</td>
+        <td><span class="share stag-bar"><i style="width:${Math.round((p.points / top) * 1000) / 10}%"></i></span></td>
+      </tr>`).join('') : '<tr class="empty-row"><td colspan="4">No stagger yet at this point.</td></tr>';
+    $('break-list').innerHTML = all.length
+      ? all.map((ms, n) => `<li class="${ms <= playhead ? 'passed' : ''}"><span class="dim">Break ${n + 1}</span> <span class="when">${clock(ms)}</span></li>`).join('')
+      : '<li class="dim">No stagger break in this fight.</li>';
+    const maps = sh.skillMaps(sacc);
+    const merged = abilityShare.merge(maps, maps.map((_, i) => i), session.skill_names);
+    if (total <= 0) { $('stagger-skill-rows').innerHTML = '<tr class="empty-row"><td colspan="4">No stagger yet at this point.</td></tr>'; return; }
+    const { shown, rest } = abilityShare.split(merged, 'damage');
+    const line = (r) => `<tr>
+        <td><span class="name">${esc(r.name || skillName(r.skill))}</span></td>
+        <td class="dmg stag-pts">${sh.points(r.damage, full)}</td>
+        <td class="dim">${pct(r.damage / total, 0)}</td>
+        <td>${shareBar(r, total)}</td>
+      </tr>`;
+    const out = shown.map(line);
+    if (rest.length) {
+      const o = rest.reduce((t, r) => t + r.damage, 0);
+      out.push(`<tr class="other-flat"><td><span class="name dim">Other (${rest.length})</span></td><td class="dmg stag-pts">${sh.points(o, full)}</td><td class="dim">${pct(o / total, 0)}</td><td><span class="share faint"><i style="width:${Math.round((o / total) * 1000) / 10}%"></i></span></td></tr>`);
+    }
+    $('stagger-skill-rows').innerHTML = out.join('');
+  }
+
+  /**
+   * Keeps a row of buttons on one line: the ones that do not fit go into a
+   * More menu. `key` is the data attribute naming each button (tab, filter);
+   * `active()` the current one; `pick(id)` runs a menu choice.
+   */
+  function overflowBar({ bar, key, more, button, label, menu, active, pick, room, names, extraClass }) {
+    let overflow = [];
+    const buttons = () => [...bar.querySelectorAll(`:scope > button[data-${key}]`)];
+    const ctl = {
+      layout() {
+        const list = buttons();
+        const skip = new Set(list.filter((b) => b.dataset.off === '1').map((b) => b.dataset[key]));
+        list.forEach((b) => { b.hidden = skip.has(b.dataset[key]); });
+        more.hidden = false;
+        const gap = parseFloat(getComputedStyle(bar).columnGap) || 0;
+        const items = list.map((b) => ({ id: b.dataset[key], width: b.offsetWidth, primary: b.dataset.primary === '1', hidden: skip.has(b.dataset[key]) }));
+        const res = tabOverflow.layout(items, room(), button.offsetWidth || 64, gap);
+        list.forEach((b) => { if (!skip.has(b.dataset[key])) b.hidden = !res.visible.includes(b.dataset[key]); });
+        overflow = res.overflow;
+        more.hidden = overflow.length === 0;
+        if (more.hidden) ctl.close(false);
+        menu.innerHTML = overflow.map((id) => `<li role="none"><button type="button" role="menuitem" data-${key}="${id}" class="${(extraClass && extraClass(id)) || ''}" tabindex="-1">${esc(names()[id] || id)}</button></li>`).join('');
+        ctl.paint();
+      },
+      paint() {
+        const now = active();
+        label.textContent = tabOverflow.moreLabel(now, overflow, names());
+        button.classList.toggle('on', overflow.includes(now));
+        menu.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset[key] === now));
+      },
+      open() {
+        menu.hidden = false;
+        button.setAttribute('aria-expanded', 'true');
+        const items = [...menu.querySelectorAll('button')];
+        const at = Math.max(0, items.findIndex((b) => b.dataset[key] === active()));
+        if (items[at]) items[at].focus();
+      },
+      close(focus) {
+        if (menu.hidden) return;
+        menu.hidden = true;
+        button.setAttribute('aria-expanded', 'false');
+        if (focus) button.focus();
+      },
+      button,
+    };
+    button.addEventListener('click', () => (menu.hidden ? ctl.open() : ctl.close(true)));
+    button.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown') { event.preventDefault(); ctl.open(); }
+    });
+    menu.addEventListener('click', (event) => {
+      const b = event.target.closest(`button[data-${key}]`);
+      if (!b) return;
+      ctl.close(true);
+      pick(b.dataset[key]);
+    });
+    menu.addEventListener('keydown', (event) => {
+      const items = [...menu.querySelectorAll('button')];
+      const at = items.indexOf(document.activeElement);
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); ctl.close(true); }
+      else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const next = tabOverflow.step(at, items.length, event.key === 'ArrowDown' ? 1 : -1);
+        if (next >= 0) items[next].focus();
+      } else if (event.key === 'Tab') ctl.close(false);
+    });
+    document.addEventListener('pointerdown', (event) => {
+      if (!more.contains(event.target)) ctl.close(false);
+    });
+    window.addEventListener('blur', () => ctl.close(false));
+    if (window.ResizeObserver) new ResizeObserver(() => ctl.layout()).observe(bar.parentElement);
+    else window.addEventListener('resize', () => ctl.layout());
+    return ctl;
+  }
+
+  let tabsBar = null;
+  let feedBar = null;
+  const layoutTabs = () => { if (tabsBar) tabsBar.layout(); };
+  const layoutFeedBar = () => { if (feedBar) feedBar.layout(); };
 
   /** Legend chips show or hide each chart series. Healing stays off without heals. */
   function paintSeries() {
@@ -475,21 +604,25 @@
     renderPlayers();
     renderShare(true);
     renderHeal(true);
+    renderStagger(true);
     renderFeed(true);
   }
 
   function setTab(next) {
     tab = next;
-    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    document.querySelectorAll('#tabs > button[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
     $('players-view').hidden = tab !== 'players';
     $('roster-hint').hidden = tab !== 'players';
     $('share-view').hidden = tab !== 'share';
     $('share-controls').hidden = tab !== 'share';
     $('heal-view').hidden = tab !== 'heal';
     $('heal-controls').hidden = tab !== 'heal' || !hasHeals;
+    $('stagger-view').hidden = tab !== 'stagger';
+    layoutTabs();
     if (!session) return;
     if (tab === 'share') renderShare(true);
     else if (tab === 'heal') renderHeal(true);
+    else if (tab === 'stagger') renderStagger(true);
     else renderPlayers();
   }
 
@@ -521,6 +654,7 @@
     b.textContent = name != null ? name : 'Select player';
     b.classList.toggle('picked', name != null);
     b.title = name != null ? `Hits by ${name}. Click to pick another player.` : 'Pick a player';
+    if (feedBar) feedBar.layout();
   }
 
   /** A new session starts on All players in both the share scope and the feed. */
@@ -563,7 +697,7 @@
     pickFor = null;
     $(list).hidden = true;
     $(button).setAttribute('aria-expanded', 'false');
-    if (refocus) $(button).focus();
+    if (refocus) ($(button).hidden && button === 'filter-player' ? $('feed-more-btn') : $(button)).focus();
   }
 
   /** Picking a player is the same selection the Players tab and the feed filter use. */
@@ -572,6 +706,7 @@
     if (pickFor === 'feed') {
       feedFilter = 'player';
       document.querySelectorAll('#feed-filters > button').forEach((b) => b.classList.toggle('on', b.dataset.filter === 'player'));
+      if (feedBar) feedBar.paint();
     } else if (pickFor === 'heal') {
       healScope = 'player';
       document.querySelectorAll('#heal-scope > button').forEach((b) => b.classList.toggle('on', b.dataset.scope === 'player'));
@@ -840,7 +975,33 @@
     else scopeLabel();
     feedLabel();
   });
-  document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  document.querySelectorAll('#tabs > button[data-tab]').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  tabsBar = overflowBar({
+    bar: $('tabs'), key: 'tab', more: $('tab-more'), button: $('more-btn'), label: $('more-label'), menu: $('more-menu'),
+    active: () => tab, pick: (id) => setTab(id), names: () => TAB_NAMES,
+    // The sort/scope controls wrap to their own line; keep room for a short sub line.
+    room: () => Math.max(0, $('tabs').parentElement.clientWidth - SUB_MIN - (parseFloat(getComputedStyle($('tabs').parentElement).columnGap) || 0) - 2),
+    extraClass: (id) => (id === 'heal' ? 'heal-tab' : ''),
+  });
+  feedBar = overflowBar({
+    bar: $('feed-filters'), key: 'filter', more: $('feed-more'), button: $('feed-more-btn'), label: $('feed-more-label'), menu: $('feed-more-menu'),
+    active: () => feedFilter,
+    pick: (id) => {
+      if (id === 'player') { openPicker('feed'); return; }
+      const b = document.querySelector(`#feed-filters > button[data-filter="${id}"]`);
+      if (b) b.click();
+      feedBar.paint();
+    },
+    names: () => ({ all: 'All', player: $('filter-player').textContent, crits: 'Crits only', damage: 'Damage', heals: 'Heals' }),
+    room: () => {
+      const bar = $('feed-filters');
+      const cs = getComputedStyle(bar);
+      const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
+      return Math.max(0, bar.parentElement.clientWidth - pad - 1);
+    },
+  });
+  layoutTabs();
+  layoutFeedBar();
   $('share-rows').addEventListener('click', (event) => {
     if (event.target.closest('#share-other')) toggleOther();
   });
@@ -915,7 +1076,7 @@
     }
   }
   document.addEventListener('mousedown', (event) => {
-    if (!event.target.closest('.pick-list, #scope-player, #filter-player, #heal-scope-player')) closePicker(false);
+    if (!event.target.closest('.pick-list, #scope-player, #filter-player, #heal-scope-player, #feed-more')) closePicker(false);
   });
   document.querySelectorAll('#share-sort button').forEach((b) => b.addEventListener('click', () => {
     shareSort = b.dataset.sort;
@@ -926,6 +1087,7 @@
     closePicker(false);
     feedFilter = b.dataset.filter;
     document.querySelectorAll('#feed-filters > button').forEach((other) => other.classList.toggle('on', other === b));
+    if (feedBar) feedBar.paint();
     if (session) renderFeed(true);
   }));
   window.addEventListener('storage', (event) => {

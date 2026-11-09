@@ -53,7 +53,23 @@
     return `~${full(Math.round(value))}`;
   }
 
-  const api = { has, advance, breaksUntil, breaksText, points };
+  /** Per-player rows { i, name, points }, by name: most stagger first, then A-Z.
+   * Players with no stagger are left out. */
+  function byPlayer(acc, names) {
+    if (!acc) return [];
+    return (names || [])
+      .map((name, i) => ({ i, name, points: acc.actor[i] || 0 }))
+      .filter((p) => p.points > 0)
+      .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+  }
+
+  /** Per-actor skill maps shaped for abilityShare.merge (points as `damage`). */
+  function skillMaps(acc) {
+    if (!acc) return [];
+    return acc.skills.map((m) => new Map([...m].map(([skill, pts]) => [skill, { skill, dot: false, damage: pts, hits: 0, crits: 0 }])));
+  }
+
+  const api = { has, advance, breaksUntil, breaksText, points, byPlayer, skillMaps };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.staggerHistory = api;
 })(typeof window !== 'undefined' ? window : globalThis);

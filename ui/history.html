@@ -99,9 +99,14 @@
     <section class="card roster">
       <div class="card-head roster-head">
         <div class="tabs" id="tabs" role="tablist">
-          <button type="button" role="tab" data-tab="players" class="on">Players</button>
+          <button type="button" role="tab" data-tab="players" data-primary="1" class="on">Players</button>
           <button type="button" role="tab" data-tab="share">Ability share</button>
-          <button type="button" role="tab" data-tab="heal" class="heal-tab">Healing</button>
+          <button type="button" role="tab" data-tab="heal" data-primary="1" class="heal-tab">Healing</button>
+          <button type="button" role="tab" data-tab="stagger" class="stagger-tab" data-off="1" hidden>Stagger</button>
+          <div class="tab-more" id="tab-more" hidden>
+            <button type="button" class="more-btn" id="more-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="more-menu"><span id="more-label">More</span><span class="chev" aria-hidden="true"></span></button>
+            <ul class="more-menu" id="more-menu" role="menu" aria-label="More tabs" hidden></ul>
+          </div>
         </div>
         <span class="sub" id="roster-sub"></span>
         <div class="share-controls" id="share-controls" hidden>
@@ -145,6 +150,28 @@
           </div>
         </div>
       </div>
+      <div class="scroll stagger-view" id="stagger-view" hidden>
+        <div class="stagger-grid">
+          <div>
+            <h3 class="sub-head">Stagger by player</h3>
+            <table class="players-table stagger-table">
+              <colgroup><col><col class="c-num"><col class="c-pct"><col class="c-heal-bar"></colgroup>
+              <thead><tr><th>PLAYER</th><th title="Estimated stagger points">STAGGER ~</th><th>SHARE</th><th></th></tr></thead>
+              <tbody id="stagger-rows"></tbody>
+            </table>
+            <h3 class="sub-head">Breaks</h3>
+            <ol class="break-list" id="break-list"></ol>
+          </div>
+          <div>
+            <h3 class="sub-head">Stagger by ability</h3>
+            <table class="players-table stagger-table">
+              <colgroup><col><col class="c-num"><col class="c-pct"><col class="c-share"></colgroup>
+              <tbody id="stagger-skill-rows"></tbody>
+            </table>
+          </div>
+        </div>
+        <p class="stagger-foot">Stagger points are estimates. The game sends only the target's stagger gauge; each drop is shared out over the hits just before it.</p>
+      </div>
       <div class="scroll" id="share-view" hidden>
         <table class="players-table share-table">
           <colgroup>
@@ -181,12 +208,16 @@
       <span class="sub" id="feed-sub"></span>
     </div>
     <div class="modes feed-filters" id="feed-filters" role="group" aria-label="Show">
-      <button type="button" data-filter="all" class="on">All</button>
+      <button type="button" data-filter="all" data-primary="1" class="on">All</button>
       <button type="button" data-filter="player" id="filter-player" aria-haspopup="listbox" aria-expanded="false" aria-controls="feed-pick">Select player</button>
       <ul class="pick-list" id="feed-pick" role="listbox" aria-label="Players" hidden></ul>
       <button type="button" data-filter="crits">Crits only</button>
-      <button type="button" data-filter="damage">Damage</button>
-      <button type="button" data-filter="heals" id="filter-heals">Heals</button>
+      <button type="button" data-filter="damage" data-primary="1">Damage</button>
+      <button type="button" data-filter="heals" data-primary="1" id="filter-heals">Heals</button>
+      <div class="filter-more" id="feed-more" hidden>
+        <button type="button" class="more-btn" id="feed-more-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="feed-more-menu"><span id="feed-more-label">More</span><span class="chev" aria-hidden="true"></span></button>
+        <ul class="more-menu" id="feed-more-menu" role="menu" aria-label="More filters" hidden></ul>
+      </div>
     </div>
     <div class="scroll">
       <ol class="feed-list" id="feed"></ol>
@@ -201,6 +232,7 @@
 <script src="js/ability-share.js"></script>
 <script src="js/heal-share.js"></script>
 <script src="js/stagger-history.js"></script>
+<script src="js/tab-overflow.js"></script>
 <script src="js/history.js"></script>
 </body>
 </html>
