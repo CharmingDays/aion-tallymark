@@ -48,3 +48,13 @@ test('heals are shifted with the hits and never go before 0:00', () => {
 test('a session without heals gets an empty heal list', () => {
   assert.deepStrictEqual(trim(s(55699, 278492, 278492)).session.heals, []);
 });
+
+test('stagger shares and break times move with the hits', () => {
+  const base = s(55699, 278492, 278492);
+  const r = trim(Object.assign(base, { stagger: [[55800, 0, 5, 1]], stagger_breaks: [60000, 100] }));
+  assert.deepStrictEqual(r.session.stagger, [[1601, 0, 5, 1]]);
+  assert.deepStrictEqual(r.session.stagger_breaks, [5801, 0]);
+  assert.strictEqual(base.stagger[0][0], 55800, 'the file is not changed');
+  const old = trim(s(55699, 278492, 278492));
+  assert.strictEqual(old.session.stagger, undefined);
+});

@@ -48,6 +48,8 @@
       <div class="stat heal-stat"><span class="label">Total healing</span><span class="value" id="s-heal">—</span></div>
       <div class="stat heal-stat"><span class="label">Group HPS</span><span class="value" id="s-hps">—</span></div>
       <div class="stat wide"><span class="label">Top DPS</span><span class="value" id="s-top">—</span></div>
+      <div class="stat stagger-stat" id="s-stagger-stat" hidden><span class="label">Stagger breaks</span><span class="value" id="s-breaks">—</span></div>
+      <div class="stat stagger-stat" id="s-stagger-total-stat" hidden title="Estimated: the game sends only the target's stagger gauge, and each drop is shared out over the hits just before it."><span class="label">Group stagger (est.)</span><span class="value" id="s-stagger">—</span></div>
       <div class="truncated" id="truncated" hidden>This fight had more hits than the meter keeps. The replay covers the first 200,000 hits; the totals cover the whole fight.</div>
     </div>
 
@@ -71,6 +73,7 @@
           </g>
           <path class="heal-area" id="heal-area" d=""/>
           <path class="heal-line" id="heal-line" d=""/>
+          <g id="break-marks"></g>
           <line class="playhead" id="playhead" x1="0" y1="0" x2="0" y2="200"/>
         </svg>
       </div>
@@ -156,16 +159,16 @@
       </div>
       <p class="roster-hint" id="roster-hint">Click a player to see their abilities.</p>
       <div class="scroll" id="players-view">
-        <table class="players-table">
-          <colgroup>
+        <table class="players-table" id="players-table">
+          <colgroup id="players-cols">
             <col class="c-rank"><col><col class="c-num"><col class="c-num"><col class="c-pct"><col class="c-pct"><col class="c-share">
           </colgroup>
           <thead>
-            <tr><th>RANK</th><th>NAME</th><th>TOTAL DAMAGE</th><th>DPS</th><th>% OF GROUP</th><th>CRIT %</th><th>SHARE</th></tr>
+            <tr><th>RANK</th><th>NAME</th><th>TOTAL DAMAGE</th><th>DPS</th><th>% OF GROUP</th><th>CRIT %</th><th class="stag" title="Estimated stagger points">STAGGER ~</th><th>SHARE</th></tr>
           </thead>
           <tbody id="players"></tbody>
           <tfoot id="group-row" hidden>
-            <tr><td></td><td>Group total</td><td id="foot-total">0</td><td id="foot-dps">0</td><td>100%</td><td id="foot-crit">—</td><td></td></tr>
+            <tr><td></td><td>Group total</td><td id="foot-total">0</td><td id="foot-dps">0</td><td>100%</td><td id="foot-crit">—</td><td class="stag" id="foot-stagger"></td><td></td></tr>
           </tfoot>
         </table>
       </div>
@@ -197,6 +200,7 @@
 <script src="js/replay-trim.js"></script>
 <script src="js/ability-share.js"></script>
 <script src="js/heal-share.js"></script>
+<script src="js/stagger-history.js"></script>
 <script src="js/history.js"></script>
 </body>
 </html>

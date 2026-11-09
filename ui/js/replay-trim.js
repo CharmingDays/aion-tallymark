@@ -26,8 +26,15 @@
     const healsShifted = offset && heals.length
       ? heals.map((h) => { const c = h.slice(); c[0] = Math.max(0, h[0] - offset); return c; })
       : heals;
+    // Stagger shares and break times move with the hits (older files have none).
+    const shift = (t) => Math.max(0, t - offset);
+    const stagger = Array.isArray(session.stagger) ? session.stagger : null;
+    const breaks = Array.isArray(session.stagger_breaks) ? session.stagger_breaks : null;
+    const extra = {};
+    if (stagger) extra.stagger = offset ? stagger.map((r) => { const c = r.slice(); c[0] = shift(r[0]); return c; }) : stagger;
+    if (breaks) extra.stagger_breaks = offset ? breaks.map(shift) : breaks;
     return {
-      session: Object.assign({}, session, { events: shifted, heals: healsShifted }),
+      session: Object.assign({}, session, { events: shifted, heals: healsShifted }, extra),
       offset,
       span: Math.max(1, end - offset),
     };

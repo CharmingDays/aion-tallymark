@@ -79,6 +79,9 @@ pub struct Session {
     /// Stagger breaks on the target, ms from `started_at`. Empty for older files.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stagger_breaks: Vec<i64>,
+    /// Estimated stagger per hit, in time order. Empty for older files.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stagger: Vec<Stagger>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -132,6 +135,11 @@ pub struct Event(pub i64, pub u32, pub i64, pub u8, pub i32);
 /// `[t_ms, actor index, healed, flags, skill id]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Heal(pub i64, pub u32, pub i64, pub u8, pub i32);
+
+/// `[t_ms, actor index, estimated stagger points, skill id]`: one hit's
+/// share of a stagger gauge drop. Estimates, see `Combat::attribute_stagger`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Stagger(pub i64, pub u32, pub f64, pub i32);
 
 fn supported(version: u32) -> bool {
     (MIN_SCHEMA_VERSION..=SCHEMA_VERSION).contains(&version)
@@ -474,7 +482,27 @@ mod tests {
             heals: vec![Heal(500, 0, 400, 0, 300), Heal(1_500, 0, 500, FLAG_HOT, 300)],
             name: None,
             stagger_breaks: Vec::new(),
+            stagger: Vec::new(),
         }
+    }
+
+    #[test]
+    fn stagger_fields_are_optional_both_ways() {
+        let plain = serde_json::to_value(sample(1_000, "Vakron")).unwrap();
+        assert!(plain.get("stagger").is_none() && plain.get("stagger_breaks").is_none());
+        assert!(plain["players"][0].get("stagger").is_none());
+        let old: Session = serde_json::from_value(plain.clone()).unwrap();
+        assert!(old.stagger.is_empty() && old.stagger_breaks.is_empty());
+        assert_eq!(old.players[0].stagger, 0.0);
+
+        let mut with = sample(1_000, "Vakron");
+        with.stagger = vec![Stagger(500, 0, 2.5, 100)];
+        with.stagger_breaks = vec![11_000];
+        with.players[0].stagger = 2.5;
+        let json = serde_json::to_value(&with).unwrap();
+        assert_eq!(json["stagger"], serde_json::json!([[500, 0, 2.5, 100]]));
+        assert_eq!(json["stagger_breaks"], serde_json::json!([11_000]));
+        assert_eq!(serde_json::from_value::<Session>(json).unwrap(), with);
     }
 
     fn files(dir: &Path) -> Vec<String> {

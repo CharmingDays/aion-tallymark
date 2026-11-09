@@ -60,6 +60,7 @@ static FILES: &[(&str, &str, &[u8])] = &[
     ("/js/toast-queue.js", JS, include_bytes!("../ui/js/toast-queue.js")),
     ("/js/heal-share.js", JS, include_bytes!("../ui/js/heal-share.js")),
     ("/js/stagger-view.js", JS, include_bytes!("../ui/js/stagger-view.js")),
+    ("/js/stagger-history.js", JS, include_bytes!("../ui/js/stagger-history.js")),
     ("/js/npcap-help.js", JS, include_bytes!("../ui/js/npcap-help.js")),
     ("/js/ability-share.js", JS, include_bytes!("../ui/js/ability-share.js")),
     ("/js/replay-trim.js", JS, include_bytes!("../ui/js/replay-trim.js")),

@@ -279,3 +279,11 @@ tr.player .share > i, .share-table .share > i { background: var(--pc, var(--acce
 .feed-list li.heal { background: rgba(74, 222, 128, 0.06); }
 .ab-heal-tag { flex: 0 0 auto; padding: 1px 5px; border-radius: 3px; background: var(--heal-tag); color: var(--heal); font-size: 9px; font-weight: 700; }
 .ab-dmg.heal { color: var(--heal); }
+
+/* Stagger (sessions saved with stagger data only) */
+.players-table .c-stag { width: 96px; }
+.players-table:not(.has-stagger) .stag { display: none; }
+.summary-card .stagger-stat[hidden] { display: none; }
+.summary-card .stagger-stat .value { color: #F5B14C; }
+.chart .break-mark { stroke: rgba(245, 177, 76, 0.45); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.chart .break-mark.passed { stroke: #F5B14C; }

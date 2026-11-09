@@ -191,6 +191,16 @@ struct TargetStagger {
     total: f64,
 }
 
+/// One hit's estimated share of a gauge drop, for a saved session.
+#[derive(Debug, Clone, Copy)]
+struct StaggerShare {
+    at: i64,
+    target: i32,
+    actor: i32,
+    skill: i32,
+    points: f64,
+}
+
 /// The last gauge the server sent for an entity.
 #[derive(Debug, Clone, Copy)]
 struct Gauge {
@@ -532,6 +542,8 @@ pub struct Combat {
     /// Gauge drops seen after exactly one hit: raw skill id to
     /// `(points, times seen)`. Kept across fights.
     stagger_learned: HashMap<i32, Vec<(u32, u32)>>,
+    /// Every stagger share of the open fight, for a saved session.
+    stagger_shares: Vec<StaggerShare>,
 }
 
 impl Default for Combat {
@@ -580,6 +592,7 @@ impl Combat {
             pinned: None,
             gauges: HashMap::new(),
             stagger_learned: HashMap::new(),
+            stagger_shares: Vec::new(),
         }
     }
 
@@ -1087,7 +1100,7 @@ impl Combat {
                 max,
                 remaining,
                 frozen,
-            } => self.apply_stagger(id, max, remaining, frozen),
+            } => self.apply_stagger(id, max, remaining, frozen, now),
             Event::StaggerBreak { id } => self.apply_stagger_break(id, now),
             Event::SummonSpawn {
                 summon,
@@ -1179,7 +1192,7 @@ impl Combat {
     }
 
     /// `05 E0` gauge. A drop is shared out over the hits since the last update.
-    fn apply_stagger(&mut self, id: i32, max: u32, remaining: u32, frozen: bool) {
+    fn apply_stagger(&mut self, id: i32, max: u32, remaining: u32, frozen: bool, now: i64) {
         if self.gauges.len() >= GAUGE_LIMIT && !self.gauges.contains_key(&id) {
             let targets = &self.targets;
             self.gauges.retain(|id, _| targets.contains_key(id));
@@ -1198,7 +1211,7 @@ impl Combat {
             },
         );
         match prev {
-            Some(prev) if remaining < prev => self.attribute_stagger(id, prev - remaining),
+            Some(prev) if remaining < prev => self.attribute_stagger(id, prev - remaining, now),
             _ => {
                 if let Some(target) = self.targets.get_mut(&id) {
                     target.stagger.pending.clear();
@@ -1232,7 +1245,7 @@ impl Combat {
             }
         };
         if left > 0 {
-            self.attribute_stagger(id, left);
+            self.attribute_stagger(id, left, now);
         } else if let Some(target) = self.targets.get_mut(&id) {
             target.stagger.pending.clear();
         }
@@ -1274,7 +1287,7 @@ impl Combat {
     /// One hit takes the whole drop and teaches its skill's value. Several
     /// share it by their skills' learned values (an unknown skill counts as
     /// the average known one), or evenly when none is known.
-    fn attribute_stagger(&mut self, id: i32, drop: u32) {
+    fn attribute_stagger(&mut self, id: i32, drop: u32, now: i64) {
         let Some(target) = self.targets.get_mut(&id) else {
             return;
         };
@@ -1313,6 +1326,15 @@ impl Combat {
                 points / pending.len() as f64
             };
             target.actors.entry(*actor).or_default().add_stagger(*skill, share);
+            if self.stagger_shares.len() < SESSION_EVENT_LIMIT {
+                self.stagger_shares.push(StaggerShare {
+                    at: now,
+                    target: id,
+                    actor: *actor,
+                    skill: *skill,
+                    points: share,
+                });
+            }
         }
     }
 
@@ -1610,6 +1632,7 @@ impl Combat {
         self.active_ms = 0;
         self.events = Vec::new();
         self.events_truncated = false;
+        self.stagger_shares = Vec::new();
         self.released = None;
         self.pinned = None;
     }
@@ -1896,6 +1919,17 @@ impl Combat {
                 .as_ref()
                 .map(|stagger| stagger.break_ms.clone())
                 .unwrap_or_default(),
+            stagger: self
+                .stagger_shares
+                .iter()
+                .filter(|share| counted.contains(&share.target))
+                .filter_map(|share| {
+                    let actor = *index.get(&self.named_id(share.actor))?;
+                    let t_ms = share.at.saturating_sub(started_at).max(0);
+                    let points = (share.points * 100.0).round() / 100.0;
+                    Some(sessions::Stagger(t_ms, actor, points, share.skill))
+                })
+                .collect(),
         })
     }
 
@@ -3632,7 +3666,10 @@ mod tests {
         assert_eq!((view.remaining, view.estimated), (1_200, 3.0));
         combat.apply(Event::Stagger { id: BOSS_ID, max: 1_200, remaining: 1_200, frozen: true }, 7_000);
         assert!(combat.snapshot(7_000).stagger.unwrap().frozen);
-        assert_eq!(combat.session(7_000).unwrap().stagger_breaks, vec![1_000]);
+        let session = combat.session(7_000).unwrap();
+        assert_eq!(session.stagger_breaks, vec![1_000]);
+        assert_eq!(session.stagger, vec![sessions::Stagger(1_000, 0, 3.0, 100)]);
+        assert_eq!(session.players[0].stagger, 3.0);
     }
 
     #[test]

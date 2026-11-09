@@ -60,6 +60,11 @@
   let healScope = 'all';
   let healOtherOpen = false;
   let healShown = '';
+  /** Stagger running totals (stagger-history.js) and whether the session has any. */
+  const sh = window.staggerHistory;
+  let sacc = null;
+  let hasStagger = false;
+  const COLS = '<col class="c-rank"><col><col class="c-num"><col class="c-num"><col class="c-pct"><col class="c-pct">';
 
   if (bridge.inApp) document.body.classList.add('in-app');
 
@@ -146,6 +151,7 @@
     rawSession = loaded;
     acc = null;
     hacc = null;
+    sacc = null;
     note('');
     $('detail').hidden = !session;
     $('feed-card').hidden = !session;
@@ -177,6 +183,11 @@
     series.heal = hasHeals;
     paintSeries();
     $('filter-heals').hidden = !hasHeals;
+    hasStagger = sh.has(session);
+    $('players-table').classList.toggle('has-stagger', hasStagger);
+    $('players-cols').innerHTML = `${COLS}${hasStagger ? '<col class="c-stag">' : ''}<col class="c-share">`;
+    $('s-stagger-stat').hidden = !hasStagger;
+    $('s-stagger-total-stat').hidden = !hasStagger;
     renderSummary();
     renderChart();
     seek(0);
@@ -207,6 +218,22 @@
     $('s-heal').title = healed ? full(hacc.total) : '';
     $('s-hps').textContent = healed ? `${short((hacc.total * 1000) / activeMs)}/s` : '—';
     $('s-top').textContent = rows.length ? `${rows[0].name} \u00b7 ${short((rows[0].damage * 1000) / activeMs)}/s` : '—';
+    if (hasStagger) {
+      const all = session.stagger_breaks || [];
+      const seen = sh.breaksUntil(all, playhead);
+      $('s-breaks').textContent = sh.breaksText(seen, clock);
+      $('s-breaks').title = all.length ? `${all.length} in the fight, at ${all.map((ms) => clock(ms)).join(', ')}` : 'No stagger break in this fight';
+      $('s-stagger').textContent = sh.points(sacc ? sacc.total : 0, full) || '—';
+    }
+  }
+
+  /** A dashed mark on the chart for each stagger break. */
+  function renderBreakMarks() {
+    const breaks = hasStagger ? session.stagger_breaks || [] : [];
+    $('break-marks').innerHTML = breaks.map((ms) => {
+      const x = ((Math.min(span, ms) / span) * CHART_W).toFixed(1);
+      return `<line class="break-mark" data-t="${ms}" x1="${x}" y1="0" x2="${x}" y2="${CHART_H}"><title>Stagger break at ${clock(ms)}</title></line>`;
+    }).join('');
   }
 
   function renderState() {
@@ -245,6 +272,7 @@
     $('heal-line').setAttribute('d', healLine);
     $('heal-area').setAttribute('d', healArea);
     $('peak').textContent = `Group DPS \u00b7 peak ${short(Math.max(1, ...rates))}/s`;
+    renderBreakMarks();
   }
 
   function advance(t) {
@@ -279,6 +307,10 @@
   function renderAt() {
     advance(playhead);
     hacc = heals.advance(hacc, session.heals, session.actors.length, playhead);
+    sacc = sh.advance(sacc, session.stagger, session.actors.length, playhead);
+    document.querySelectorAll('#break-marks .break-mark').forEach((mark) => {
+      mark.classList.toggle('passed', Number(mark.dataset.t) <= playhead);
+    });
     $('scrub').value = String(playhead);
     $('t-now').textContent = clock(playhead);
     const x = ((playhead / span) * CHART_W).toFixed(1);
@@ -616,7 +648,8 @@
   function abilityRows(i, damage) {
     const list = [...acc.skills[i].values()].sort((a, b) => b.damage - a.damage);
     const top = Math.max(1, list.length ? list[0].damage : 1);
-    return `<tr class="ab-head"><td></td><td>ABILITY</td><td>DAMAGE</td><td>HITS</td><td>% OF PLAYER</td><td>CRIT %</td><td></td></tr>`
+    const staggerOf = (r) => (r.dot || !sacc ? 0 : sacc.skills[i].get(r.skill) || 0);
+    return `<tr class="ab-head"><td></td><td>ABILITY</td><td>DAMAGE</td><td>HITS</td><td>% OF PLAYER</td><td>CRIT %</td><td class="stag">STAGGER ~</td><td></td></tr>`
       + list.map((r) => {
         const name = skillName(r.skill);
         return `<tr class="ab-row">
@@ -626,6 +659,7 @@
         <td class="dim">${r.hits}</td>
         <td class="dim">${pct(r.damage / damage, 1)}</td>
         <td class="dim">${rate(r.crits, r.hits)}</td>
+        <td class="dim stag" title="Estimated stagger points">${sh.points(staggerOf(r), full) || '\u2014'}</td>
         <td><span class="share"><i style="width:${Math.round((r.damage / top) * 1000) / 10}%"></i></span></td>
       </tr>`;
       }).join('');
@@ -644,7 +678,7 @@
     const sub = tab === 'players' ? $('roster-sub') : { textContent: '' };
     if (!rows.length) {
       sub.textContent = `At ${clock(playhead)}`;
-      body.innerHTML = '<tr class="empty-row"><td colspan="7">No damage yet at this point.</td></tr>';
+      body.innerHTML = `<tr class="empty-row"><td colspan="${hasStagger ? 8 : 7}">No damage yet at this point.</td></tr>`;
       return;
     }
     sub.textContent = `${rows.length} ${rows.length === 1 ? 'player' : 'players'} \u00b7 at ${clock(playhead)}`;
@@ -656,11 +690,13 @@
         <td class="dim">${short((p.damage * 1000) / activeMs)}</td>
         <td class="dim">${pct(p.damage / acc.total, 1)}</td>
         <td class="dim">${rate(p.crits, p.hits)}</td>
+        <td class="dim stag" title="Estimated stagger points">${sh.points(sacc ? sacc.actor[p.i] : 0, full) || '\u2014'}</td>
         <td><span class="share"><i style="width:${Math.round((p.damage / top) * 1000) / 10}%"></i></span></td>
       </tr>${expanded.has(p.i) ? abilityRows(p.i, p.damage) : ''}`).join('');
     $('foot-total').textContent = short(acc.total);
     $('foot-dps').textContent = short((acc.total * 1000) / activeMs);
     $('foot-crit').textContent = rate(acc.crits, acc.hits);
+    $('foot-stagger').textContent = hasStagger ? sh.points(sacc ? sacc.total : 0, full) || '\u2014' : '';
   }
 
   function seek(t) {
