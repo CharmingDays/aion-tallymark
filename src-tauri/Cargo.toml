@@ -1,6 +1,6 @@
 [package]
 name = "aion2dps-app"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "Desktop shell for the aion2dps passive damage meter: overlay and detailed meter windows."
