@@ -62,6 +62,27 @@ pub struct Live {
     pub pets_version: u64,
 }
 
+/// The opt-in local debug logs (pets, position, cubes). Each one only writes
+/// what the meter already read from captured packets to a file on this PC.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct DebugLogs {
+    pub pets: bool,
+    pub position: bool,
+    pub cubes: bool,
+}
+
+impl DebugLogs {
+    /// The logs turned on by `AION2DPS_DEBUG_PETS` / `_POSITION` / `_CUBES`.
+    pub fn from_env() -> Self {
+        let on = |name: &str| std::env::var(name).ok().as_deref() == Some("1");
+        Self {
+            pets: on("AION2DPS_DEBUG_PETS"),
+            position: on(crate::position_debug::ENV_VAR),
+            cubes: crate::cube_discovery::env_mode().is_some(),
+        }
+    }
+}
+
 pub struct AppState {
     combat: Mutex<Combat>,
     cubes: Mutex<crate::hidden_cubes::Detector>,
@@ -71,6 +92,11 @@ pub struct AppState {
     pet_toast_secs: AtomicU64,
     /// Pet toasts waiting for the desktop shell.
     pet_toast_queue: Mutex<Vec<crate::pets::PetToast>>,
+    /// Debug logs switched on in Config (saved), and those set by env vars.
+    debug_pets: AtomicBool,
+    debug_position: AtomicBool,
+    debug_cubes: AtomicBool,
+    debug_env: DebugLogs,
     capture: Mutex<CaptureInfo>,
     /// When on, closing the overlay keeps the app in the tray and reopens it
     /// when the AION 2 client starts. Desktop shell only; combat ignores it.
@@ -157,6 +183,10 @@ impl AppState {
             pet_toasts: AtomicBool::new(stored.pet_toasts),
             pet_toast_secs: AtomicU64::new(clamp_toast_secs(stored.pet_toast_secs)),
             pet_toast_queue: Mutex::new(Vec::new()),
+            debug_pets: AtomicBool::new(stored.debug_pets),
+            debug_position: AtomicBool::new(stored.debug_position),
+            debug_cubes: AtomicBool::new(stored.debug_cubes),
+            debug_env: DebugLogs::from_env(),
             capture: Mutex::new(CaptureInfo::default()),
             open_when_aion2: AtomicBool::new(stored.open_when_aion2),
             start_with_windows: AtomicBool::new(stored.start_with_windows),
@@ -309,6 +339,10 @@ impl AppState {
         settings.hidden_cube_alerts = self.hidden_cube_alerts();
         settings.pet_toasts = self.pet_toasts();
         settings.pet_toast_secs = self.pet_toast_secs();
+        settings.debug_pets = self.debug_pets.load(Ordering::Relaxed);
+        settings.debug_position = self.debug_position.load(Ordering::Relaxed);
+        settings.debug_cubes = self.debug_cubes.load(Ordering::Relaxed);
+        settings.debug_env = self.debug_env;
         Live {
             cube_alerts: self.with_cubes(|cubes| {
                 if self.hidden_cube_alerts() {
@@ -477,6 +511,30 @@ impl AppState {
         Ok(())
     }
 
+    /// The debug logs that should be writing now: switched on in Config or
+    /// by an env var. The decode thread opens or closes them when this changes.
+    pub fn debug_logs(&self) -> DebugLogs {
+        DebugLogs {
+            pets: self.debug_env.pets || self.debug_pets.load(Ordering::Relaxed),
+            position: self.debug_env.position || self.debug_position.load(Ordering::Relaxed),
+            cubes: self.debug_env.cubes || self.debug_cubes.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Any may be left out. Saved, and applied without a restart.
+    pub fn set_debug_logs(&self, pets: Option<bool>, position: Option<bool>, cubes: Option<bool>) {
+        if let Some(on) = pets {
+            self.debug_pets.store(on, Ordering::Relaxed);
+        }
+        if let Some(on) = position {
+            self.debug_position.store(on, Ordering::Relaxed);
+        }
+        if let Some(on) = cubes {
+            self.debug_cubes.store(on, Ordering::Relaxed);
+        }
+        self.store_settings();
+    }
+
     fn store_settings(&self) {
         let view = self.with_combat(|combat| combat.settings());
         store_settings(&StoredSettings {
@@ -491,6 +549,9 @@ impl AppState {
             hidden_cube_alerts: self.hidden_cube_alerts(),
             pet_toasts: self.pet_toasts(),
             pet_toast_secs: self.pet_toast_secs(),
+            debug_pets: self.debug_pets.load(Ordering::Relaxed),
+            debug_position: self.debug_position.load(Ordering::Relaxed),
+            debug_cubes: self.debug_cubes.load(Ordering::Relaxed),
         });
     }
 
@@ -524,6 +585,10 @@ struct StoredSettings {
     /// Default on, 60 s after the last soul.
     pet_toasts: bool,
     pet_toast_secs: u64,
+    /// Default off: the local debug logs (env vars still turn them on).
+    debug_pets: bool,
+    debug_position: bool,
+    debug_cubes: bool,
 }
 
 fn clamp_toast_secs(secs: u64) -> u64 {
@@ -544,6 +609,9 @@ impl Default for StoredSettings {
             hidden_cube_alerts: true,
             pet_toasts: true,
             pet_toast_secs: crate::pets::DEFAULT_TOAST_SECS,
+            debug_pets: false,
+            debug_position: false,
+            debug_cubes: false,
         }
     }
 }
@@ -562,6 +630,9 @@ impl From<SettingsView> for StoredSettings {
             hidden_cube_alerts: view.hidden_cube_alerts,
             pet_toasts: view.pet_toasts,
             pet_toast_secs: view.pet_toast_secs,
+            debug_pets: view.debug_pets,
+            debug_position: view.debug_position,
+            debug_cubes: view.debug_cubes,
         }
     }
 }

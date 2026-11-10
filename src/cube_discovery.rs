@@ -23,13 +23,20 @@ pub fn default_path() -> PathBuf {
         .join("aion2dps")
         .join("cube-discovery.jsonl")
 }
+/// `AION2DPS_DEBUG_CUBES`: `Some(false)` for 1, `Some(true)` (every opcode) for 2.
+pub fn env_mode() -> Option<bool> {
+    match std::env::var("AION2DPS_DEBUG_CUBES").ok().as_deref() {
+        Some("1") => Some(false),
+        Some("2") => Some(true),
+        _ => None,
+    }
+}
 impl CubeDiscovery {
     pub fn from_env() -> Option<Self> {
-        let wide = match std::env::var("AION2DPS_DEBUG_CUBES").ok().as_deref() {
-            Some("1") => false,
-            Some("2") => true,
-            _ => return None,
-        };
+        Self::open(env_mode()?)
+    }
+    /// The Config switch opens it like `AION2DPS_DEBUG_CUBES=1`.
+    pub fn open(wide: bool) -> Option<Self> {
         let path = default_path();
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).ok()?;

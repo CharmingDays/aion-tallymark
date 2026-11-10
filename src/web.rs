@@ -56,6 +56,7 @@ static FILES: &[(&str, &str, &[u8])] = &[
     ("/js/alerts-schedule.js", JS, include_bytes!("../ui/js/alerts-schedule.js")),
     ("/js/notify.js", JS, include_bytes!("../ui/js/notify.js")),
     ("/js/alerts-panel.js", JS, include_bytes!("../ui/js/alerts-panel.js")),
+    ("/js/config-schema.js", JS, include_bytes!("../ui/js/config-schema.js")),
     ("/js/config-panel.js", JS, include_bytes!("../ui/js/config-panel.js")),
     ("/js/toast-queue.js", JS, include_bytes!("../ui/js/toast-queue.js")),
     ("/js/heal-share.js", JS, include_bytes!("../ui/js/heal-share.js")),
@@ -70,6 +71,7 @@ static FILES: &[(&str, &str, &[u8])] = &[
     ("/js/pets.js", JS, include_bytes!("../ui/js/pets.js")),
     ("/js/page-tabs.js", JS, include_bytes!("../ui/js/page-tabs.js")),
     ("/css/pets.css", CSS, include_bytes!("../ui/css/pets.css")),
+    ("/css/config.css", CSS, include_bytes!("../ui/css/config.css")),
     ("/toast.html", HTML, include_bytes!("../ui/toast.html")),
     (
         "/fonts/Inter-Variable.woff2",
@@ -156,6 +158,9 @@ struct SettingsBody {
     hidden_cube_alerts: Option<bool>,
     pet_toasts: Option<bool>,
     pet_toast_secs: Option<u64>,
+    debug_pets: Option<bool>,
+    debug_position: Option<bool>,
+    debug_cubes: Option<bool>,
 }
 
 /// Any subset of the settings. Nothing applies unless all of it is valid.
@@ -203,6 +208,9 @@ async fn settings(
     }
     if body.pet_toasts.is_some() || body.pet_toast_secs.is_some() {
         let _ = state.set_pet_toasts(body.pet_toasts, body.pet_toast_secs);
+    }
+    if body.debug_pets.is_some() || body.debug_position.is_some() || body.debug_cubes.is_some() {
+        state.set_debug_logs(body.debug_pets, body.debug_position, body.debug_cubes);
     }
     StatusCode::NO_CONTENT
 }

@@ -272,20 +272,6 @@
 .ae-delete { border-color: var(--danger); background: none; color: var(--danger); }
 .ae-delete:hover { border-color: var(--danger); background: rgba(248, 113, 113, 0.1); }
 
-/* Config panel (js/config-panel.js): the old footer settings, in an Alerts-style panel. */
-.config-panel .cp-group { margin: 6px 0 0; padding-top: 10px; border-top: 1px solid var(--border); color: var(--faint); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-.config-panel .cp-group:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
-.config-panel .cp-row { flex-wrap: wrap; white-space: normal; gap: 8px; padding: 8px 0 10px; }
-.config-panel .cp-row .note { flex-basis: 100%; }
-.config-panel .cp-row .note:empty { display: none; }
-/* Config panel footer: one Save for every setting. */
-.config-panel .cp-foot { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--border); background: inherit; }
-.config-panel .cp-status { color: var(--faint); font-size: 12px; }
-.config-panel .cp-status.ok { color: var(--accent); }
-.config-panel .cp-status.bad { color: #e57373; }
-.config-panel .cp-save { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
-.config-panel .cp-save:disabled { background: transparent; border-color: var(--border); color: var(--faint); cursor: default; opacity: 0.7; }
-
 /* Pet soul progress (Figma "Toast - Pet soul progress"): pet portrait or
    family paw, name + family, souls counter, progress bar that animates in
    place. Gold while collecting, green when summoned or levelled. */

@@ -427,6 +427,12 @@ pub struct SettingsView {
     /// AppState-owned: pet soul progress toasts, and seconds they stay.
     pub pet_toasts: bool,
     pub pet_toast_secs: u64,
+    /// AppState-owned: opt-in local debug logs switched on in Config.
+    pub debug_pets: bool,
+    pub debug_position: bool,
+    pub debug_cubes: bool,
+    /// Which of those logs an `AION2DPS_DEBUG_*` variable turned on.
+    pub debug_env: crate::state::DebugLogs,
 }
 
 /// The live view is held on a boss that just died.
@@ -619,6 +625,10 @@ impl Combat {
             hidden_cube_alerts: true,
             pet_toasts: true,
             pet_toast_secs: crate::pets::DEFAULT_TOAST_SECS,
+            debug_pets: false,
+            debug_position: false,
+            debug_cubes: false,
+            debug_env: crate::state::DebugLogs::default(),
         }
     }
 

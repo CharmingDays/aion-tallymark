@@ -107,6 +107,10 @@
     setPetToasts: ({ on, secs }) => (inApp
       ? tauri.core.invoke('set_pet_toasts', { on, secs })
       : post('/api/settings', { pet_toasts: on, pet_toast_secs: secs })),
+    /** Pets / position / cubes debug logs; any may be undefined to leave it. */
+    setDebugLogs: ({ pets, position, cubes }) => (inApp
+      ? tauri.core.invoke('set_debug_logs', { pets, position, cubes })
+      : post('/api/settings', { debug_pets: pets, debug_position: position, debug_cubes: cubes })),
     setHiddenCubeAlerts: (on) => (inApp
       ? tauri.core.invoke('set_hidden_cube_alerts', { on })
       : post('/api/settings', { hidden_cube_alerts: on })),

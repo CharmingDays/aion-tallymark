@@ -12,9 +12,6 @@
   const sv = window.staggerView;
 
   let selected = null;
-  // Config panel edits wait for its single Save button.
-  let configDirty = false;
-  let configSaving = false;
   const bossLock = window.bossLock;
   let latest = null;
   let view = heals.view(localStorage.getItem(VIEW_KEY));
@@ -295,47 +292,7 @@
     renderRecent(m);
     renderHistory(data.history || []);
     renderCapture(data.capture);
-    if (!configDirty && !configSaving && data.settings) loadConfig(data.settings);
-  }
-
-  const pcApi = window.playerColors;
-  let youColor = pcApi.readYouColor();
-  let youColorDirty = false;
-
-  function drawYouColor() {
-    const presets = $('you-presets');
-    if (!presets) return;
-    $('you-custom').value = youColor;
-    presets.innerHTML = pcApi.PRESETS.map((c) =>
-      `<button type="button" data-c="${c}" style="--c:${c}" class="${c === youColor ? 'on' : ''}" aria-label="${c}"></button>`
-    ).join('');
-  }
-
-  function pickYouColor(c) {
-    if (!pcApi.isHex(c)) return;
-    youColor = c.toLowerCase();
-    youColorDirty = true;
-    drawYouColor();
-    setDirty(true);
-  }
-
-  function loadConfig(s) {
-    if (s.reset_after_secs != null) $('reset-secs').value = s.reset_after_secs;
-    if (s.boss_lock_secs != null) {
-      $('boss-lock-secs').value = s.boss_lock_secs;
-      $('boss-damage').value = bossLock.formatDamage(s.boss_damage_threshold);
-    }
-    if (typeof s.boss_engage_lock === 'boolean') $('boss-engage').checked = s.boss_engage_lock;
-    if (typeof s.open_when_aion2 === 'boolean') $('open-when-aion2').checked = s.open_when_aion2;
-    $('start-with-windows').checked = s.start_with_windows === true;
-    $('pop-up-on-boss').checked = s.pop_up_on_boss !== false;
-    $('hidden-cube-alerts').checked = s.hidden_cube_alerts !== false;
-    $('pet-toasts').checked = s.pet_toasts !== false;
-    if (s.pet_toast_secs != null) $('pet-toast-secs').value = s.pet_toast_secs;
-    if (typeof s.overlay_click_through === 'boolean') $('overlay-click-through').checked = s.overlay_click_through;
-    youColor = pcApi.readYouColor();
-    youColorDirty = false;
-    drawYouColor();
+    if (data.settings) window.configPanel.update(data.settings);
   }
 
   function lost() {
@@ -364,118 +321,10 @@
   $('clear-history').addEventListener('click', () => bridge.clearHistory().catch(lost));
   $('open-history').addEventListener('click', () => bridge.openHistory());
   $('open-browser').addEventListener('click', () => bridge.openInBrowser());
-  const saveBtn = $('config-save');
-  const configNote = $('config-note');
-  let savedTimer = null;
-  const notes = ['settings-note', 'boss-note', 'app-note', 'appearance-note', 'pet-note'];
-  function setDirty(on) {
-    configDirty = on;
-    saveBtn.disabled = !on || configSaving;
-    if (on) { clearTimeout(savedTimer); configNote.textContent = ''; configNote.className = 'cp-status'; }
-  }
-  ['reset-secs', 'boss-lock-secs', 'boss-damage', 'pet-toast-secs'].forEach((id) => $(id).addEventListener('input', () => setDirty(true)));
-  ['boss-engage', 'open-when-aion2', 'start-with-windows', 'pop-up-on-boss', 'overlay-click-through', 'hidden-cube-alerts', 'pet-toasts'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
-  drawYouColor();
-  $('you-presets').addEventListener('click', (event) => {
-    const b = event.target.closest('button[data-c]');
-    if (b) pickYouColor(b.dataset.c);
-  });
-  $('you-custom').addEventListener('input', (event) => pickYouColor(event.target.value));
-  // Closing the panel discards unsaved edits; the next open shows the saved values.
-  document.addEventListener('config:closed', () => {
-    setDirty(false);
-    notes.forEach((id) => { $(id).textContent = ''; });
-    configNote.textContent = '';
-    if (latest && latest.settings) loadConfig(latest.settings);
-  });
-
-  async function saveConfig() {
-    if (!configDirty || configSaving) return;
-    notes.forEach((id) => { $(id).textContent = ''; });
-    const s = (latest && latest.settings) || {};
-    const resetSecs = Number($('reset-secs').value);
-    const lock = bossLock.parseLockSecs($('boss-lock-secs').value);
-    if (!lock.ok) { $('boss-note').textContent = lock.error; return; }
-    const damage = bossLock.parseBossDamage($('boss-damage').value);
-    if (!damage.ok) { $('boss-note').textContent = damage.error; return; }
-    const engage = $('boss-engage').checked;
-    const openWhen = $('open-when-aion2').checked;
-    const startWindows = $('start-with-windows').checked;
-    const popUpBoss = $('pop-up-on-boss').checked;
-    const clickThrough = $('overlay-click-through').checked;
-    const cubeAlerts = $('hidden-cube-alerts').checked;
-    const petToasts = $('pet-toasts').checked;
-    const petSecs = Number($('pet-toast-secs').value);
-    if (bridge.inApp && !(Number.isInteger(petSecs) && petSecs >= 10 && petSecs <= 300)) { $('pet-note').textContent = 'Use 10 to 300.'; return; }
-    configSaving = true;
-    saveBtn.disabled = true;
-    let failed = false;
-    if (resetSecs !== s.reset_after_secs) {
-      try { await bridge.setResetSecs(resetSecs); } catch (_) { failed = true; $('settings-note').textContent = 'Use 5 to 3600.'; }
-    }
-    if (lock.value !== s.boss_lock_secs || damage.value !== s.boss_damage_threshold || engage !== s.boss_engage_lock) {
-      try {
-        await bridge.setBossSettings({ lockSecs: lock.value, damageThreshold: damage.value, engageLock: engage });
-        $('boss-damage').value = bossLock.formatDamage(damage.value);
-      } catch (_) { failed = true; $('boss-note').textContent = 'Could not save.'; }
-    }
-    if (bridge.inApp && openWhen !== s.open_when_aion2) {
-      try {
-        await bridge.setOpenWhenAion2(openWhen);
-        $('app-note').textContent = openWhen
-          ? 'Close the overlay to wait in the tray for Aion 2.'
-          : (popUpBoss ? 'Close the overlay to wait in the tray for a boss.' : 'Closing the overlay quits the app.');
-      } catch (_) { failed = true; $('app-note').textContent = 'Could not save.'; }
-    }
-    if (bridge.inApp && clickThrough !== s.overlay_click_through) {
-      try {
-        await bridge.setOverlayClickThrough(clickThrough);
-      } catch (_) { failed = true; $('app-note').textContent = 'Could not save.'; }
-    }
-    if (bridge.inApp && startWindows !== (s.start_with_windows === true)) {
-      try { await bridge.setStartWithWindows(startWindows); }
-      catch (err) { failed = true; $('app-note').textContent = String(err || 'Could not update Start with Windows.'); }
-    }
-    if (bridge.inApp && popUpBoss !== (s.pop_up_on_boss !== false)) {
-      try { await bridge.setPopUpOnBoss(popUpBoss); }
-      catch (_) { failed = true; $('app-note').textContent = 'Could not save boss popup setting.'; }
-    }
-    if (bridge.inApp && (petToasts !== (s.pet_toasts !== false) || petSecs !== s.pet_toast_secs)) {
-      try { await bridge.setPetToasts({ on: petToasts, secs: petSecs }); }
-      catch (_) { failed = true; $('pet-note').textContent = 'Could not save.'; }
-    }
-    if (cubeAlerts !== s.hidden_cube_alerts) {
-      try { await bridge.setHiddenCubeAlerts(cubeAlerts); }
-      catch (_) { failed = true; configNote.textContent = 'Could not save cube alerts.'; }
-    }
-    if (youColorDirty) {
-      youColor = pcApi.writeYouColor(youColor);
-      youColorDirty = false;
-    }
-    configSaving = false;
-    clearTimeout(savedTimer);
-    if (failed) {
-      configNote.textContent = 'Some settings could not be saved.';
-      configNote.className = 'cp-status bad';
-      setDirty(true);
-      configNote.textContent = 'Some settings could not be saved.';
-      configNote.className = 'cp-status bad';
-    } else {
-      setDirty(false);
-      configNote.textContent = 'Saved';
-      configNote.className = 'cp-status ok';
-      savedTimer = setTimeout(() => { configNote.textContent = ''; }, 2500);
-    }
-  }
-  saveBtn.addEventListener('click', saveConfig);
-  // Enter in a field saves the whole panel too.
-  ['settings', 'boss-settings', 'app-settings', 'appearance-settings', 'pet-settings'].forEach((id) => $(id).addEventListener('submit', (event) => {
-    event.preventDefault();
-    saveConfig();
-  }));
   $('lock-chip').addEventListener('click', () => bridge.unlock().catch(lost));
 
   bridge.subscribe(render, lost);
   const notifier = window.notify.startAlerts(window.notify.hostFor());
   window.alertsPanel.create($('open-alerts'), notifier);
+  window.configPanel.attach(notifier);
 })();

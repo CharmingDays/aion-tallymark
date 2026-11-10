@@ -63,6 +63,11 @@ impl PositionDebug {
         if std::env::var(ENV_VAR).ok().as_deref() != Some("1") {
             return None;
         }
+        Self::open()
+    }
+
+    /// The Config switch opens it like `AION2DPS_DEBUG_POSITION=1`.
+    pub fn open() -> Option<Self> {
         let path = default_path();
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).ok()?;

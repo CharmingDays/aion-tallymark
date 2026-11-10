@@ -53,12 +53,29 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
     let mut assembler = Assembler::new();
     let mut spawns = SpawnDebug::from_env();
     let mut deaths = DeathDebug::from_env();
-    let mut cube_discovery = crate::cube_discovery::CubeDiscovery::from_env();
-    let mut position_debug = crate::position_debug::PositionDebug::from_env();
-    let mut pet_debug = crate::pets::PetDebug::from_env();
+    // Pets / position / cubes logs follow Config and the AION2DPS_DEBUG_*
+    // env vars; they open or close here when either changes, no restart.
+    let mut cube_discovery = None;
+    let mut position_debug = None;
+    let mut pet_debug = None;
+    let mut logs_on = crate::state::DebugLogs::default();
+    let cube_wide = crate::cube_discovery::env_mode() == Some(true);
     let mut cube_flow = None;
     while let Ok(segment) = rx.recv() {
         state.with_capture(|capture| capture.segments = capture.segments.saturating_add(1));
+        let want = state.debug_logs();
+        if want != logs_on {
+            if want.pets != logs_on.pets {
+                pet_debug = if want.pets { crate::pets::PetDebug::open_default() } else { None };
+            }
+            if want.position != logs_on.position {
+                position_debug = if want.position { crate::position_debug::PositionDebug::open() } else { None };
+            }
+            if want.cubes != logs_on.cubes {
+                cube_discovery = if want.cubes { crate::cube_discovery::CubeDiscovery::open(cube_wide) } else { None };
+            }
+            logs_on = want;
+        }
         let framed = assembler.push(
             segment.src,
             segment.sport,

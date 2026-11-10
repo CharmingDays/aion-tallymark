@@ -14,7 +14,8 @@ fn player_color_palette_assignment_via_node() {
 fn your_color_lives_in_config_with_the_history_storage_key() {
     let colors = include_str!("../ui/js/player-colors.js");
     let meter_html = include_str!("../ui/index.html");
-    let meter_js = include_str!("../ui/js/meter.js");
+    let config_schema = include_str!("../ui/js/config-schema.js");
+    let config_js = include_str!("../ui/js/config-panel.js");
     let history_html = include_str!("../ui/history.html");
     let history_js = include_str!("../ui/js/history.js");
     let overlay_js = include_str!("../ui/js/overlay.js");
@@ -25,11 +26,10 @@ fn your_color_lives_in_config_with_the_history_storage_key() {
     assert!(colors.contains("function readYouColor("));
     assert!(colors.contains("function writeYouColor("));
 
-    assert!(meter_html.contains("id=\"appearance-settings\""));
-    assert!(meter_html.contains("id=\"you-presets\""));
-    assert!(meter_html.contains("Your color"));
-    assert!(meter_js.contains("pcApi.writeYouColor"));
-    assert!(meter_js.contains("player-colors.js") || meter_html.contains("player-colors.js"));
+    assert!(config_schema.contains("id: 'you_color'"));
+    assert!(config_schema.contains("label: 'Your color'"));
+    assert!(config_js.contains("pcApi.writeYouColor"));
+    assert!(meter_html.contains("player-colors.js"));
 
     assert!(
         !history_html.contains("id=\"you-color\""),

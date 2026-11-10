@@ -55,6 +55,8 @@ Get the files from the Releases page.
 | Your monster names | `%LOCALAPPDATA%\aion2dps\monster-names.json` |
 | Debug logs (only when turned on) | `%LOCALAPPDATA%\aion2dps\death-debug.jsonl`, `target-debug.jsonl` |
 
+**Config** (gear button on the detailed meter) saves each change as you make it: a small green *Saved* shows next to the setting and in the footer, and **Undo** puts the last change back. Search (`Ctrl F`) finds any setting across sections. **Overlay > Opacity** sets the same level as `-`/`+` on the overlay. **Advanced > Debug logs** switches the pets, position and cubes logs on and off without a restart, the same as `AION2DPS_DEBUG_PETS=1`, `AION2DPS_DEBUG_POSITION=1` and `AION2DPS_DEBUG_CUBES=1` (those variables still work and keep the log on).
+
 Set `AION2DPS_DEBUG_DEATHS=1` before starting the app to log what the game sends when monsters die (see [Debugging monster deaths](#debugging-monster-deaths)). `AION2DPS_DEBUG_TARGETS=1` or `--debug-targets` logs unnamed targets. Both only read packets.
 
 ## Building from source

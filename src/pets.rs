@@ -505,6 +505,11 @@ impl PetDebug {
         Self::open(&debug_path())
     }
 
+    /// The Config switch opens it like `AION2DPS_DEBUG_PETS=1`.
+    pub fn open_default() -> Option<Self> {
+        Self::open(&debug_path())
+    }
+
     fn open(path: &Path) -> Option<Self> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).ok()?;

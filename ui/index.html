@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="css/meter.css">
 <link rel="stylesheet" href="css/notify.css">
 <link rel="stylesheet" href="css/pets.css">
+<link rel="stylesheet" href="css/config.css">
 </head>
 <body>
 <header class="topbar">
@@ -185,59 +186,21 @@
   </section>
 </main>
 
-<section class="alerts-panel config-panel" id="config-panel" hidden>
-  <div class="ap-head"><h2>Config</h2><button type="button" class="t-close" data-close title="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div>
-  <div class="ap-body">
-  <h3 class="cp-group">Combat</h3>
-  <form class="settings cp-row" id="settings">
-    <label for="reset-secs">Reset damage after</label>
-    <input id="reset-secs" type="number" min="5" max="3600" step="1" value="30">
-    <span>s without a hit</span>
-    <span id="settings-note" class="note"></span>
-  </form>
-  <h3 class="cp-group">Boss lock</h3>
-  <form class="settings cp-row" id="boss-settings">
-    <label class="check" title="Keep showing a boss while you fight it, so hitting other monsters doesn't switch the view. They are still recorded."><input id="boss-engage" type="checkbox" checked> Lock on boss while fighting</label>
-    <label for="boss-lock-secs" title="Keep showing a boss for this long after it dies, so you can save it. 0 turns it off.">Lock after boss dies</label>
-    <input id="boss-lock-secs" type="number" min="0" max="60" step="1" value="10">
-    <span>s</span>
-    <label for="boss-damage" title="A target that takes this much damage counts as a boss.">Boss damage threshold</label>
-    <input id="boss-damage" class="wide" type="text" inputmode="numeric" value="1,500,000">
-    <span id="boss-note" class="note"></span>
-  </form>
-  <h3 class="cp-group app-only">App</h3>
-  <form class="settings cp-row app-only" id="app-settings">
-    <label class="check" title="When on, closing the overlay keeps aion2dps running in the system tray. The overlay opens again when AION 2 starts. Right-click the tray icon for Show overlay or Quit. Closing the overlay while the game is already running does not reopen it on this trigger until the game is started again. Boss popups are controlled separately."><input id="open-when-aion2" type="checkbox"> Open automatically when Aion 2 is detected</label>
-    <label class="check" title="Run as administrator at sign-in using a current-user Windows scheduled task. Starts in the system tray. Changes apply when you Save."><input id="start-with-windows" type="checkbox"> Start with Windows</label>
-    <label class="check" title="Restore and focus the overlay once when a new boss is detected while the app is in the tray or minimized. Closing the overlay keeps the app in the tray while this is enabled."><input id="pop-up-on-boss" type="checkbox" checked> Pop up when boss detected</label>
-    <label class="check" title="When on, clicks on the overlay body pass through to the game. The top bar (save, reset, drag) and a thin edge for resizing stay clickable."><input id="overlay-click-through" type="checkbox" checked> Overlay click-through</label>
-    <span id="app-note" class="note"></span>
-  </form>
+<section class="config-panel cfg" id="config-panel" hidden role="dialog" aria-label="Config">
+  <div class="cfg-head">
+    <h2 class="cfg-title"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Config</h2>
+    <span class="cfg-saved-head" id="cfg-saved-head" hidden aria-live="polite">Saved</span>
+    <label class="cfg-search"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input id="cfg-search" type="search" placeholder="Search settings&#8230;" autocomplete="off" spellcheck="false" aria-label="Search settings"><span class="cfg-search-count" id="cfg-search-count"></span><button type="button" class="cfg-search-clear" id="cfg-search-clear" title="Clear search" hidden>&#215;</button><kbd id="cfg-kbd">Ctrl F</kbd></label>
+    <button type="button" class="t-close" data-close title="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
   </div>
-  <h3 class="cp-group">Exploration</h3>
-  <div class="settings cp-row">
-    <label class="check" title="Passive, verified cube templates only. Requires live discovery calibration in this preview."><input id="hidden-cube-alerts" type="checkbox" checked> Hidden cube alerts</label>
-    <span class="note">Only confirmed cube types alert. Unknown distance is hidden.</span>
+  <div class="cfg-main">
+    <nav class="cfg-nav" aria-label="Config sections">
+      <div id="cfg-nav-list" class="cfg-nav-list"></div>
+      <div class="cfg-nav-foot"><span>aion2dps</span><button type="button" class="link" id="cfg-reset-all">Reset all&#8230;</button></div>
+    </nav>
+    <div class="cfg-content" id="cfg-content"></div>
   </div>
-  <h3 class="cp-group app-only">Pets</h3>
-  <form class="settings cp-row app-only" id="pet-settings">
-    <label class="check" title="Show a toast when a pet soul drops. One toast per pet: more souls update its counter and bar in place instead of showing a new toast."><input id="pet-toasts" type="checkbox" checked> Pet soul progress toasts</label>
-    <label for="pet-toast-secs" title="How long the toast stays after the last soul for that pet.">Keep visible for</label>
-    <input id="pet-toast-secs" type="number" min="10" max="300" step="5" value="60">
-    <span>s after the last soul</span>
-    <span id="pet-note" class="note"></span>
-  </form>
-  <h3 class="cp-group">Appearance</h3>
-  <form class="settings cp-row" id="appearance-settings" onsubmit="return false;">
-    <label class="you-color-row" title="Colour of your name in the overlay and in session history.">Your color
-      <span class="you-color-controls">
-        <span class="swatches" id="you-presets"></span>
-        <input type="color" id="you-custom" aria-label="Custom colour">
-      </span>
-    </label>
-    <span id="appearance-note" class="note"></span>
-  </form>
-  <div class="cp-foot"><span id="config-note" class="cp-status" aria-live="polite"></span><button class="btn small cp-save" id="config-save" type="button" disabled>Save</button></div>
+  <div class="cfg-foot"><span class="cfg-status" id="cfg-status" aria-live="polite"></span><button class="btn small" id="cfg-undo" type="button" disabled>Undo</button><button class="btn small primary" id="cfg-done" type="button">Done</button></div>
 </section>
 <footer class="statusbar">
   <div id="capture" class="capture">Starting capture…</div>
@@ -258,6 +221,7 @@
 <script src="js/notify.js"></script>
 <script src="js/alerts-panel.js"></script>
 <script src="js/player-colors.js"></script>
+<script src="js/config-schema.js"></script>
 <script src="js/config-panel.js"></script>
 <script src="js/heal-share.js"></script>
 <script src="js/npcap-help.js"></script>

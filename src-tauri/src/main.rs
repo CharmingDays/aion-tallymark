@@ -194,6 +194,17 @@ fn set_pet_toasts(state: State<'_, Arc<AppState>>, on: Option<bool>, secs: Optio
     state.set_pet_toasts(on, secs)
 }
 
+/// Any may be left out. The logs open or close without a restart.
+#[tauri::command]
+fn set_debug_logs(
+    state: State<'_, Arc<AppState>>,
+    pets: Option<bool>,
+    position: Option<bool>,
+    cubes: Option<bool>,
+) {
+    state.set_debug_logs(pets, position, cubes);
+}
+
 #[tauri::command]
 fn set_hidden_cube_alerts(state: State<'_, Arc<AppState>>, on: bool) {
     state.set_hidden_cube_alerts(on);
@@ -813,6 +824,7 @@ fn main() {
             set_overlay_click_through,
             set_hidden_cube_alerts,
             set_pet_toasts,
+            set_debug_logs,
             cube_visible,
             overlay_pointer,
             overlay_hit,

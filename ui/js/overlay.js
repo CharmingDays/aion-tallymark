@@ -1,4 +1,4 @@
-// Compact always-on-top overlay. -/+ keys change opacity; the layout scales
+// Compact always-on-top overlay. -/+ keys (or Config) change opacity; the layout scales
 // with the window; a press on the card moves it. A click that does not move on
 // a typed target's name opens the name editor. With click-through on (default),
 // the body lets clicks reach the game; the top bar and a thin edge for resizing
@@ -83,6 +83,13 @@
     card.style.setProperty('--content-opacity', (0.4 + 0.6 * level).toFixed(3));
     localStorage.setItem(OPACITY_KEY, level.toFixed(1));
   }
+
+  // Config's Opacity setting writes the same key from the meter window.
+  window.addEventListener('storage', (event) => {
+    if (event.key !== OPACITY_KEY) return;
+    level = readLevel();
+    paintOpacity();
+  });
 
   function stepOpacity(direction) {
     level = Math.min(MAX_LEVEL, Math.max(MIN_LEVEL, Math.round((level + direction * STEP) * 10) / 10));
