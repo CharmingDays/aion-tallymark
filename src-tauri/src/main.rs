@@ -22,7 +22,7 @@
 mod tray_watch;
 mod startup;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -188,6 +188,12 @@ fn set_overlay_click_through(state: State<'_, Arc<AppState>>, on: bool) {
     state.set_overlay_click_through(on);
 }
 
+/// Either value may be left out.
+#[tauri::command]
+fn set_pet_toasts(state: State<'_, Arc<AppState>>, on: Option<bool>, secs: Option<u64>) -> Result<(), String> {
+    state.set_pet_toasts(on, secs)
+}
+
 #[tauri::command]
 fn set_hidden_cube_alerts(state: State<'_, Arc<AppState>>, on: bool) {
     state.set_hidden_cube_alerts(on);
@@ -344,6 +350,42 @@ async fn show_toast(app: AppHandle, toasts: State<'_, Toasts>, toast: serde_json
         recent.insert(id, now);
     }
     deliver(&app, &toasts, toast).map_err(|err| err.to_string())
+}
+
+/// Pet portraits being downloaded or that failed this run, so each is tried once.
+#[derive(Default)]
+struct PetIcons(Mutex<HashSet<u32>>);
+
+/// Send pet soul toasts to the toast window. One toast per pet (`pet:<id>`):
+/// the window updates it in place. The portrait comes from the local cache;
+/// a missing one is downloaded in the background and sent as an update.
+fn deliver_pet_toasts(app: &AppHandle, state: &AppState) {
+    let pending = state.take_pet_toasts();
+    if pending.is_empty() {
+        return;
+    }
+    let hide_ms = state.pet_toast_secs() * 1000;
+    let toasts = app.state::<Toasts>();
+    for pet in pending {
+        let id = pet.id;
+        let key = format!("pet:{id}");
+        let icon = aion2dps::pets::cached_icon(id);
+        if icon.is_none() && app.state::<PetIcons>().0.lock().unwrap().insert(id) {
+            let app = app.clone();
+            let key = key.clone();
+            thread::spawn(move || {
+                if aion2dps::pets::fetch_icon(id) {
+                    if let Some(icon) = aion2dps::pets::cached_icon(id) {
+                        let update = serde_json::json!({ "key": key, "kind": "pet", "iconOnly": true, "icon": icon });
+                        let _ = deliver(&app, &app.state::<Toasts>(), update);
+                    }
+                    app.state::<PetIcons>().0.lock().unwrap().remove(&id);
+                }
+            });
+        }
+        let toast = serde_json::json!({ "key": key, "kind": "pet", "hideMs": hide_ms, "pet": pet, "icon": icon });
+        let _ = deliver(app, &toasts, toast);
+    }
 }
 
 /// Show the toast again after `ms`, even if its window has closed by then.
@@ -641,6 +683,11 @@ fn push_snapshots(app: AppHandle, state: Arc<AppState>, windowless: bool) {
                 if !app.webview_windows().is_empty() {
                     let _ = app.emit("live", live);
                 }
+                if windowless {
+                    state.take_pet_toasts();
+                } else {
+                    deliver_pet_toasts(&app, &state);
+                }
                 thread::sleep(PUSH_EVERY);
             }
         })
@@ -750,6 +797,7 @@ fn main() {
         .manage(state.clone())
         .manage(Dashboard(dashboard))
         .manage(Toasts::default())
+        .manage(PetIcons::default())
         .manage(OverlaySaves::default())
         .manage(tray_watch::TrayWatch::default())
         .invoke_handler(tauri::generate_handler![
@@ -764,6 +812,7 @@ fn main() {
             set_pop_up_on_boss,
             set_overlay_click_through,
             set_hidden_cube_alerts,
+            set_pet_toasts,
             cube_visible,
             overlay_pointer,
             overlay_hit,

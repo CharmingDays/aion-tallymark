@@ -1,7 +1,7 @@
 //! Shared meter state. The capture worker writes it. The localhost pages read it.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -67,6 +67,10 @@ pub struct AppState {
     cubes: Mutex<crate::hidden_cubes::Detector>,
     pets: Mutex<crate::pets::Pets>,
     hidden_cube_alerts: AtomicBool,
+    pet_toasts: AtomicBool,
+    pet_toast_secs: AtomicU64,
+    /// Pet toasts waiting for the desktop shell.
+    pet_toast_queue: Mutex<Vec<crate::pets::PetToast>>,
     capture: Mutex<CaptureInfo>,
     /// When on, closing the overlay keeps the app in the tray and reopens it
     /// when the AION 2 client starts. Desktop shell only; combat ignores it.
@@ -113,6 +117,23 @@ impl AppState {
         self.with_pets_state(|pets| pets.view())
     }
 
+    /// Apply a pet packet and queue its toasts when pet toasts are on.
+    pub fn apply_pet_packet(&self, packet: crate::pets::PetPacket, now: i64) {
+        let toasts = self.with_pets_state(|pets| pets.apply(packet, now));
+        if !toasts.is_empty() && self.pet_toasts() {
+            let mut queue = self.pet_toast_queue.lock().unwrap_or_else(|e| e.into_inner());
+            queue.extend(toasts);
+            // Nothing is taking them (no desktop shell): keep only the latest.
+            let extra = queue.len().saturating_sub(64);
+            queue.drain(..extra);
+        }
+    }
+
+    /// Pet toasts since the last call, oldest first.
+    pub fn take_pet_toasts(&self) -> Vec<crate::pets::PetToast> {
+        std::mem::take(&mut *self.pet_toast_queue.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
     /// Load monster names from `path` and save changes back to it. Sessions
     /// are not saved.
     pub fn with_monster_names(names_path: Option<PathBuf>) -> Self {
@@ -133,6 +154,9 @@ impl AppState {
             cubes: Mutex::new(crate::hidden_cubes::Detector::default()),
             pets: Mutex::new(crate::pets::Pets::load(None)),
             hidden_cube_alerts: AtomicBool::new(stored.hidden_cube_alerts),
+            pet_toasts: AtomicBool::new(stored.pet_toasts),
+            pet_toast_secs: AtomicU64::new(clamp_toast_secs(stored.pet_toast_secs)),
+            pet_toast_queue: Mutex::new(Vec::new()),
             capture: Mutex::new(CaptureInfo::default()),
             open_when_aion2: AtomicBool::new(stored.open_when_aion2),
             start_with_windows: AtomicBool::new(stored.start_with_windows),
@@ -283,6 +307,8 @@ impl AppState {
         settings.pop_up_on_boss = self.pop_up_on_boss();
         settings.overlay_click_through = self.overlay_click_through();
         settings.hidden_cube_alerts = self.hidden_cube_alerts();
+        settings.pet_toasts = self.pet_toasts();
+        settings.pet_toast_secs = self.pet_toast_secs();
         Live {
             cube_alerts: self.with_cubes(|cubes| {
                 if self.hidden_cube_alerts() {
@@ -424,6 +450,33 @@ impl AppState {
         self.store_settings();
     }
 
+    pub fn pet_toasts(&self) -> bool {
+        self.pet_toasts.load(Ordering::Relaxed)
+    }
+
+    pub fn pet_toast_secs(&self) -> u64 {
+        self.pet_toast_secs.load(Ordering::Relaxed)
+    }
+
+    /// Either may be left out. An out-of-range time is an error and nothing changes.
+    pub fn set_pet_toasts(&self, on: Option<bool>, secs: Option<u64>) -> Result<(), String> {
+        use crate::pets::{MAX_TOAST_SECS, MIN_TOAST_SECS};
+        if secs.is_some_and(|s| !(MIN_TOAST_SECS..=MAX_TOAST_SECS).contains(&s)) {
+            return Err(format!("enter {MIN_TOAST_SECS} to {MAX_TOAST_SECS} seconds"));
+        }
+        if let Some(on) = on {
+            self.pet_toasts.store(on, Ordering::Relaxed);
+            if !on {
+                self.take_pet_toasts();
+            }
+        }
+        if let Some(secs) = secs {
+            self.pet_toast_secs.store(secs, Ordering::Relaxed);
+        }
+        self.store_settings();
+        Ok(())
+    }
+
     fn store_settings(&self) {
         let view = self.with_combat(|combat| combat.settings());
         store_settings(&StoredSettings {
@@ -436,6 +489,8 @@ impl AppState {
             pop_up_on_boss: self.pop_up_on_boss(),
             overlay_click_through: self.overlay_click_through(),
             hidden_cube_alerts: self.hidden_cube_alerts(),
+            pet_toasts: self.pet_toasts(),
+            pet_toast_secs: self.pet_toast_secs(),
         });
     }
 
@@ -466,6 +521,13 @@ struct StoredSettings {
     /// Default on: overlay body is click-through.
     overlay_click_through: bool,
     hidden_cube_alerts: bool,
+    /// Default on, 60 s after the last soul.
+    pet_toasts: bool,
+    pet_toast_secs: u64,
+}
+
+fn clamp_toast_secs(secs: u64) -> u64 {
+    secs.clamp(crate::pets::MIN_TOAST_SECS, crate::pets::MAX_TOAST_SECS)
 }
 
 impl Default for StoredSettings {
@@ -480,6 +542,8 @@ impl Default for StoredSettings {
             pop_up_on_boss: true,
             overlay_click_through: true,
             hidden_cube_alerts: true,
+            pet_toasts: true,
+            pet_toast_secs: crate::pets::DEFAULT_TOAST_SECS,
         }
     }
 }
@@ -496,6 +560,8 @@ impl From<SettingsView> for StoredSettings {
             pop_up_on_boss: view.pop_up_on_boss,
             overlay_click_through: view.overlay_click_through,
             hidden_cube_alerts: view.hidden_cube_alerts,
+            pet_toasts: view.pet_toasts,
+            pet_toast_secs: view.pet_toast_secs,
         }
     }
 }

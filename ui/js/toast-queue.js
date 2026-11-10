@@ -21,6 +21,9 @@
 //   which they always have (compact: click). Waiting toasts keep their full
 //   time and bar.
 // - Hover pauses the counting toast while the pointer is on it.
+// - Self-timed toasts (pet soul progress) keep their own clock: they count
+//   down whenever they are queued, whatever else is showing, and never take
+//   the shared countdown turn.
 (function (root) {
   const BATCH_MS = 250;
   const IMMINENT_HOLD_MS = 2000;
@@ -29,7 +32,7 @@
 
   /** True when `t` may count down at `now`. */
   function eligible(t, now) {
-    if (t.sticky) return false;
+    if (t.sticky || t.selfTimed) return false;
     if (t.kind === 'imminent' && t.eventAt != null && now < t.eventAt + IMMINENT_HOLD_MS) return false;
     return true;
   }
@@ -71,13 +74,22 @@
 
   /** Advance `step` ms at `now`. Returns the toasts whose time ran out (already removed from the result). */
   function tick(list, now, step) {
+    const expired = [];
+    list.forEach((o) => {
+      if (!o.selfTimed) return;
+      o.started = true;
+      if (!o.hovered) o.hideLeft -= step;
+      if (o.hideLeft <= 0) expired.push(o);
+    });
     const i = counter(list, now);
-    if (i < 0) return { list, expired: [] };
-    const t = list[i];
-    t.started = true;
-    if (!t.hovered) t.hideLeft -= step;
-    if (t.hideLeft > 0) return { list, expired: [] };
-    return { list: list.filter((o) => o !== t), expired: [t] };
+    if (i >= 0) {
+      const t = list[i];
+      t.started = true;
+      if (!t.hovered) t.hideLeft -= step;
+      if (t.hideLeft <= 0) expired.push(t);
+    }
+    if (!expired.length) return { list, expired };
+    return { list: list.filter((o) => !expired.includes(o)), expired };
   }
 
   const api = { BATCH_MS, IMMINENT_HOLD_MS, eligible, counter, add, tick };

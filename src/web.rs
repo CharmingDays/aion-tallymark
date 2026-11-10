@@ -154,6 +154,8 @@ struct SettingsBody {
     open_when_aion2: Option<bool>,
     overlay_click_through: Option<bool>,
     hidden_cube_alerts: Option<bool>,
+    pet_toasts: Option<bool>,
+    pet_toast_secs: Option<u64>,
 }
 
 /// Any subset of the settings. Nothing applies unless all of it is valid.
@@ -166,6 +168,11 @@ async fn settings(
         .reset_after_secs
         .is_some_and(|secs| !(MIN_RESET_SECS..=MAX_RESET_SECS).contains(&secs))
     {
+        return StatusCode::BAD_REQUEST;
+    }
+    if body.pet_toast_secs.is_some_and(|secs| {
+        !(crate::pets::MIN_TOAST_SECS..=crate::pets::MAX_TOAST_SECS).contains(&secs)
+    }) {
         return StatusCode::BAD_REQUEST;
     }
     if (body.boss_lock_secs.is_some()
@@ -193,6 +200,9 @@ async fn settings(
     }
     if let Some(on) = body.hidden_cube_alerts {
         state.set_hidden_cube_alerts(on);
+    }
+    if body.pet_toasts.is_some() || body.pet_toast_secs.is_some() {
+        let _ = state.set_pet_toasts(body.pet_toasts, body.pet_toast_secs);
     }
     StatusCode::NO_CONTENT
 }

@@ -424,6 +424,9 @@ pub struct SettingsView {
     pub overlay_click_through: bool,
     /// AppState-owned passive cube alert preference.
     pub hidden_cube_alerts: bool,
+    /// AppState-owned: pet soul progress toasts, and seconds they stay.
+    pub pet_toasts: bool,
+    pub pet_toast_secs: u64,
 }
 
 /// The live view is held on a boss that just died.
@@ -614,6 +617,8 @@ impl Combat {
             pop_up_on_boss: true,
             overlay_click_through: true,
             hidden_cube_alerts: true,
+            pet_toasts: true,
+            pet_toast_secs: crate::pets::DEFAULT_TOAST_SECS,
         }
     }
 

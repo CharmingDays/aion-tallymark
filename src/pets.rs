@@ -14,7 +14,9 @@
 //! - `0e 90` when a pet is summoned or levels up: the same layout as `0d 90`,
 //!   with the soul total that completed the step.
 //!
-//! Pet names and families come from the bundled `data/pets.json`.
+//! Pet names and families come from the bundled `data/pets.json`. Pet
+//! portraits are not bundled: [`fetch_icon`] downloads one from the web page
+//! named in that file into the app's folder the first time it is needed.
 use crate::varint::try_read_varint;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -34,6 +36,9 @@ pub const MAX_LEVEL: u8 = 3;
 struct PetData {
     summon: u32,
     level_up: Vec<u32>,
+    /// Portrait address with `{icon}` for a pet's `icon`.
+    #[serde(default)]
+    icon_url: String,
     pets: Vec<PetInfo>,
 }
 
@@ -44,6 +49,8 @@ struct PetInfo {
     family: String,
     #[serde(default)]
     source: Option<String>,
+    #[serde(default)]
+    icon: Option<String>,
 }
 
 fn data() -> &'static PetData {
@@ -56,6 +63,26 @@ fn data() -> &'static PetData {
 fn info(id: u32) -> Option<&'static PetInfo> {
     let pets = &data().pets;
     pets.binary_search_by_key(&id, |p| p.id).ok().map(|i| &pets[i])
+}
+
+/// Default, lowest and highest seconds a pet toast stays after the last soul.
+pub const DEFAULT_TOAST_SECS: u64 = 60;
+pub const MIN_TOAST_SECS: u64 = 10;
+pub const MAX_TOAST_SECS: u64 = 300;
+
+/// One pet toast: the pet's progress right after a soul drop (`gained`) or a
+/// summon / level up (`stepped`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PetToast {
+    pub id: u32,
+    pub name: String,
+    pub family: String,
+    pub level: u8,
+    pub max_level: u8,
+    pub souls: u32,
+    pub needed: Option<u32>,
+    pub gained: u32,
+    pub stepped: bool,
 }
 
 /// Souls for the next step from `level` (0 = summon), or `None` at the top.
@@ -241,7 +268,9 @@ impl Pets {
         self.saved.pets.get(&id)
     }
 
-    pub fn apply(&mut self, packet: PetPacket, now: i64) {
+    /// Apply a packet. Returns one toast per soul drop or step.
+    pub fn apply(&mut self, packet: PetPacket, now: i64) -> Vec<PetToast> {
+        let mut toasts = Vec::new();
         match packet {
             PetPacket::List { levels, souls } => {
                 // The login list is the whole state of the logged-in
@@ -283,6 +312,7 @@ impl Pets {
                     let p = self.saved.pets.entry(id).or_default();
                     p.souls = p.souls.saturating_add(gained);
                     p.updated_ms = now;
+                    toasts.push((id, gained, false));
                 }
             }
             PetPacket::Stepped(steps) => {
@@ -291,11 +321,29 @@ impl Pets {
                     p.level = (p.level + 1).min(MAX_LEVEL);
                     p.souls = 0;
                     p.updated_ms = now;
+                    toasts.push((id, 0, true));
                 }
             }
         }
         self.version += 1;
         self.save();
+        toasts
+            .into_iter()
+            .map(|(id, gained, stepped)| {
+                let row = self.row(id, info(id));
+                PetToast {
+                    id,
+                    name: row.name,
+                    family: row.family,
+                    level: row.level,
+                    max_level: MAX_LEVEL,
+                    souls: row.souls,
+                    needed: row.needed,
+                    gained,
+                    stepped,
+                }
+            })
+            .collect()
     }
 
     fn save(&self) {
@@ -346,6 +394,90 @@ impl Pets {
             updated_ms: p.map(|p| p.updated_ms),
         }
     }
+}
+
+/// A portrait name is letters, digits and `_` only, so it cannot leave the
+/// icon folder or change the address.
+fn icon_name(id: u32) -> Option<&'static str> {
+    let icon = info(id)?.icon.as_deref()?;
+    (!icon.is_empty() && icon.len() <= 80 && icon.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
+        .then_some(icon)
+}
+
+pub fn icon_dir() -> PathBuf {
+    crate::storage::folder().join("pet-icons")
+}
+
+fn icon_path(id: u32) -> Option<PathBuf> {
+    Some(icon_dir().join(format!("{}.webp", icon_name(id)?)))
+}
+
+/// The cached portrait of a pet as a `data:` URL, or `None` until fetched.
+pub fn cached_icon(id: u32) -> Option<String> {
+    let bytes = std::fs::read(icon_path(id)?).ok()?;
+    is_webp(&bytes).then(|| format!("data:image/webp;base64,{}", base64(&bytes)))
+}
+
+fn is_webp(bytes: &[u8]) -> bool {
+    bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP"
+}
+
+/// Download a pet's portrait into [`icon_dir`]. Blocking (up to about 10 s);
+/// run it off the capture and UI threads. A web request to the data site
+/// only, never anything to the game. True when the icon is cached now.
+pub fn fetch_icon(id: u32) -> bool {
+    let (Some(name), Some(path)) = (icon_name(id), icon_path(id)) else {
+        return false;
+    };
+    if path.exists() {
+        return true;
+    }
+    let url = data().icon_url.replace("{icon}", name);
+    if !url.starts_with("https://") {
+        return false;
+    }
+    if std::fs::create_dir_all(icon_dir()).is_err() {
+        return false;
+    }
+    let temp = crate::storage::temp_path(&path);
+    let mut curl = std::process::Command::new(if cfg!(windows) { "curl.exe" } else { "curl" });
+    curl.args(["-sSfL", "--max-time", "10", "--max-filesize", "2000000", "-o"])
+        .arg(&temp)
+        .arg(&url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        curl.creation_flags(CREATE_NO_WINDOW);
+    }
+    let ok = curl.status().is_ok_and(|s| s.success())
+        && std::fs::read(&temp).is_ok_and(|b| is_webp(&b))
+        && std::fs::rename(&temp, &path).is_ok();
+    if !ok {
+        let _ = std::fs::remove_file(&temp);
+    }
+    ok
+}
+
+fn base64(bytes: &[u8]) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(ABC[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 /// Opt-in (`AION2DPS_DEBUG_PETS=1`), bounded local log of the three pet
@@ -437,8 +569,11 @@ mod tests {
             pets.apply(parse(&drop).unwrap(), 1);
         }
         assert_eq!(pets.progress(1104).unwrap().souls, 4);
-        pets.apply(parse(&summoned).unwrap(), 2);
+        let toasts = pets.apply(parse(&summoned).unwrap(), 2);
         assert_eq!(pets.progress(1104).unwrap(), &Progress { level: 1, souls: 0, updated_ms: 2 });
+        assert_eq!(toasts.len(), 1);
+        assert!(toasts[0].stepped);
+        assert_eq!((toasts[0].level, toasts[0].needed), (1, Some(25)));
         let row = pets.view().pets.into_iter().find(|r| r.id == 1104).unwrap();
         assert_eq!(row.name, "Manduri Trebuchet Worker");
         assert_eq!(row.family, "Cogni");
@@ -469,7 +604,8 @@ mod tests {
         assert_eq!((p1006.level, p1006.souls), (1, 12));
         // Soul drops add, summoned or not (1006 got 1, 1, 2, 2, 1).
         for gained in [1, 1, 2, 2, 1] {
-            pets.apply(PetPacket::Souls(vec![(1006, gained)]), 3);
+            let toast = pets.apply(PetPacket::Souls(vec![(1006, gained)]), 3).remove(0);
+            assert_eq!((toast.name.as_str(), toast.gained, toast.stepped), ("Sparkie", gained, false));
         }
         assert_eq!(pets.progress(1006).unwrap().souls, 19);
         let view = pets.view();
@@ -494,6 +630,15 @@ mod tests {
         pets.apply(parse(&list).unwrap(), 2);
         assert_eq!(pets.view().summoned, 3);
         assert_eq!(pets.progress(1004).unwrap().souls, 1, "kept when souls are missing");
+    }
+
+    #[test]
+    fn base64_and_icon_names() {
+        assert_eq!(base64(b"Ma"), "TWE=");
+        assert_eq!(base64(b"Man"), "TWFu");
+        assert_eq!(base64(b"M"), "TQ==");
+        assert_eq!(icon_name(1104), Some("UT_Vehicle_Portrait_ManduriRng_01"));
+        assert!(data().icon_url.starts_with("https://") && data().icon_url.contains("{icon}"));
     }
 
     #[test]

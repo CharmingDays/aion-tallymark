@@ -330,6 +330,8 @@
     $('start-with-windows').checked = s.start_with_windows === true;
     $('pop-up-on-boss').checked = s.pop_up_on_boss !== false;
     $('hidden-cube-alerts').checked = s.hidden_cube_alerts !== false;
+    $('pet-toasts').checked = s.pet_toasts !== false;
+    if (s.pet_toast_secs != null) $('pet-toast-secs').value = s.pet_toast_secs;
     if (typeof s.overlay_click_through === 'boolean') $('overlay-click-through').checked = s.overlay_click_through;
     youColor = pcApi.readYouColor();
     youColorDirty = false;
@@ -365,14 +367,14 @@
   const saveBtn = $('config-save');
   const configNote = $('config-note');
   let savedTimer = null;
-  const notes = ['settings-note', 'boss-note', 'app-note', 'appearance-note'];
+  const notes = ['settings-note', 'boss-note', 'app-note', 'appearance-note', 'pet-note'];
   function setDirty(on) {
     configDirty = on;
     saveBtn.disabled = !on || configSaving;
     if (on) { clearTimeout(savedTimer); configNote.textContent = ''; configNote.className = 'cp-status'; }
   }
-  ['reset-secs', 'boss-lock-secs', 'boss-damage'].forEach((id) => $(id).addEventListener('input', () => setDirty(true)));
-  ['boss-engage', 'open-when-aion2', 'start-with-windows', 'pop-up-on-boss', 'overlay-click-through', 'hidden-cube-alerts'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
+  ['reset-secs', 'boss-lock-secs', 'boss-damage', 'pet-toast-secs'].forEach((id) => $(id).addEventListener('input', () => setDirty(true)));
+  ['boss-engage', 'open-when-aion2', 'start-with-windows', 'pop-up-on-boss', 'overlay-click-through', 'hidden-cube-alerts', 'pet-toasts'].forEach((id) => $(id).addEventListener('change', () => setDirty(true)));
   drawYouColor();
   $('you-presets').addEventListener('click', (event) => {
     const b = event.target.closest('button[data-c]');
@@ -402,6 +404,9 @@
     const popUpBoss = $('pop-up-on-boss').checked;
     const clickThrough = $('overlay-click-through').checked;
     const cubeAlerts = $('hidden-cube-alerts').checked;
+    const petToasts = $('pet-toasts').checked;
+    const petSecs = Number($('pet-toast-secs').value);
+    if (bridge.inApp && !(Number.isInteger(petSecs) && petSecs >= 10 && petSecs <= 300)) { $('pet-note').textContent = 'Use 10 to 300.'; return; }
     configSaving = true;
     saveBtn.disabled = true;
     let failed = false;
@@ -435,6 +440,10 @@
       try { await bridge.setPopUpOnBoss(popUpBoss); }
       catch (_) { failed = true; $('app-note').textContent = 'Could not save boss popup setting.'; }
     }
+    if (bridge.inApp && (petToasts !== (s.pet_toasts !== false) || petSecs !== s.pet_toast_secs)) {
+      try { await bridge.setPetToasts({ on: petToasts, secs: petSecs }); }
+      catch (_) { failed = true; $('pet-note').textContent = 'Could not save.'; }
+    }
     if (cubeAlerts !== s.hidden_cube_alerts) {
       try { await bridge.setHiddenCubeAlerts(cubeAlerts); }
       catch (_) { failed = true; configNote.textContent = 'Could not save cube alerts.'; }
@@ -460,7 +469,7 @@
   }
   saveBtn.addEventListener('click', saveConfig);
   // Enter in a field saves the whole panel too.
-  ['settings', 'boss-settings', 'app-settings', 'appearance-settings'].forEach((id) => $(id).addEventListener('submit', (event) => {
+  ['settings', 'boss-settings', 'app-settings', 'appearance-settings', 'pet-settings'].forEach((id) => $(id).addEventListener('submit', (event) => {
     event.preventDefault();
     saveConfig();
   }));

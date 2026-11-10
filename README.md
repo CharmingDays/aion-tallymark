@@ -90,7 +90,7 @@ This is an unofficial tool, provided as is with no warranty. It is passive and r
 - [AION2-DPS-Meter](https://github.com/taengu/AION2-DPS-Meter) (MIT), which A2Tools is partly derived from.
 - [Inter](https://rsms.me/inter/) font (SIL Open Font License).
 - Built with [Tauri](https://tauri.app/).
-- Pet names, families and soul sources for the Pets tab, and other game reference data, from [Aion2Data](https://aion2data.com) (unofficial fan reference; game data © NCSOFT).
+- Pet names, families and soul sources for the Pets tab, the pet portraits the soul toasts download on first use (not bundled), and other game reference data, from [Aion2Data](https://aion2data.com) (unofficial fan reference; game data © NCSOFT).
 
 ## License
 

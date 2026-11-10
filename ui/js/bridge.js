@@ -103,6 +103,10 @@
     setOverlayClickThrough: (on) => (inApp
       ? tauri.core.invoke('set_overlay_click_through', { on })
       : post('/api/settings', { overlay_click_through: on })),
+    /** Either may be undefined to leave it as it is. */
+    setPetToasts: ({ on, secs }) => (inApp
+      ? tauri.core.invoke('set_pet_toasts', { on, secs })
+      : post('/api/settings', { pet_toasts: on, pet_toast_secs: secs })),
     setHiddenCubeAlerts: (on) => (inApp
       ? tauri.core.invoke('set_hidden_cube_alerts', { on })
       : post('/api/settings', { hidden_cube_alerts: on })),

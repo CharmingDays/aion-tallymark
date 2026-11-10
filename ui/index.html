@@ -219,6 +219,14 @@
     <label class="check" title="Passive, verified cube templates only. Requires live discovery calibration in this preview."><input id="hidden-cube-alerts" type="checkbox" checked> Hidden cube alerts</label>
     <span class="note">Only confirmed cube types alert. Unknown distance is hidden.</span>
   </div>
+  <h3 class="cp-group app-only">Pets</h3>
+  <form class="settings cp-row app-only" id="pet-settings">
+    <label class="check" title="Show a toast when a pet soul drops. One toast per pet: more souls update its counter and bar in place instead of showing a new toast."><input id="pet-toasts" type="checkbox" checked> Pet soul progress toasts</label>
+    <label for="pet-toast-secs" title="How long the toast stays after the last soul for that pet.">Keep visible for</label>
+    <input id="pet-toast-secs" type="number" min="10" max="300" step="5" value="60">
+    <span>s after the last soul</span>
+    <span id="pet-note" class="note"></span>
+  </form>
   <h3 class="cp-group">Appearance</h3>
   <form class="settings cp-row" id="appearance-settings" onsubmit="return false;">
     <label class="you-color-row" title="Colour of your name in the overlay and in session history.">Your color

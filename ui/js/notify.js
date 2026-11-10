@@ -15,6 +15,13 @@
 // Kinds: `upcoming` (blue, "in 5:00" chip, optional Snooze), `imminent`
 // (amber, the last 30 s, a countdown line along the bottom, stays until the
 // event starts, whatever the duration, unless dismissed) and `live` (green, LIVE chip).
+//
+// `pet` toasts (Figma "Toast - Pet soul progress") show one pet's soul
+// progress. There is one per pet (key `pet:<id>`): another soul updates its
+// counter and bar in place and restarts its own timer (no hide and re-show),
+// a summon or level up switches it to the completed look, and with two pet
+// toasts up a third pet takes over the oldest one. They keep their own clock
+// (see toast-queue.js), hiding `hideMs` after the last soul.
 (function () {
   const { esc } = window.fmt;
   const { countdown, due, IMMINENT_MS, MINUTE } = window.alertSchedule;
@@ -27,6 +34,26 @@
   const SNOOZE_MS = MINUTE;
   /** Missed time (a sleeping PC) older than this does not fire late toasts. */
   const CATCH_UP_MS = 5000;
+
+  const ICON_PAW = '<svg viewBox="0 0 20 20" aria-hidden="true"><ellipse cx="5" cy="8" rx="1.8" ry="2.3"/><ellipse cx="8.5" cy="4.8" rx="1.8" ry="2.3"/><ellipse cx="12.5" cy="4.8" rx="1.8" ry="2.3"/><ellipse cx="16" cy="8" rx="1.8" ry="2.3"/><path d="M10.5 9.5c2.6 0 5 2.6 5 4.9 0 1.6-1.3 2.3-2.6 2.1-1-.2-1.6-.6-2.4-.6s-1.4.4-2.4.6c-1.3.2-2.6-.5-2.6-2.1 0-2.3 2.4-4.9 5-4.9z"/></svg>';
+  const ICON_CHECK = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.3l2.3 2.3 4.7-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const FAMILIES = ['cogni', 'fera', 'natura', 'varian', 'special'];
+
+  /** The pet toast's lines for `p` (a PetToast) and the souls gained since it showed. */
+  function petLines(p, gainedTotal, prevNeeded) {
+    const next = p.needed == null ? 'max level' : `${p.needed - p.souls} more to ${p.level === 0 ? 'summon' : `level ${p.level + 1}`}`;
+    if (p.stepped) {
+      const what = p.level <= 1 ? 'Summoned!' : `Level ${p.level}!`;
+      const after = p.needed == null ? 'max level' : `next: level ${p.level + 1} (${p.souls} / ${p.needed})`;
+      return { done: true, status: `${what} \u00b7 ${after}`, count: prevNeeded ? `${prevNeeded} / ${prevNeeded}` : 'Done', share: 1 };
+    }
+    return {
+      done: false,
+      status: `Soul collected +${gainedTotal} \u00b7 ${next}`,
+      count: p.needed == null ? 'Max' : `${p.souls} / ${p.needed}`,
+      share: p.needed ? Math.min(1, p.souls / p.needed) : 1,
+    };
+  }
 
   const ICON_CLOSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 
@@ -76,7 +103,88 @@
     /** `{text}` with the live countdown filled in where `{left}` stands. */
     const fill = (text, t, now) => String(text || '').replace('{left}', t.eventAt == null ? '' : countdown(t.eventAt - now));
 
+    function buildPet(t) {
+      const el = document.createElement('div');
+      el.className = 'toast t-pet entering';
+      el.innerHTML = `<span class="tp-img"><img alt="" hidden>${ICON_PAW}<span class="tp-done">${ICON_CHECK}</span></span>
+        <span class="t-text tp-text"><span class="tp-head"><b class="tp-name"></b><span class="tp-fam"></span><span class="tp-count"></span></span>
+        <span class="tp-status"></span><span class="tp-prog"><i></i></span></span>
+        ${compact ? '' : `<button type="button" class="t-close" title="Dismiss">${ICON_CLOSE}</button>`}
+        <i class="t-bar"></i><span class="t-more" hidden></span>`;
+      const img = el.querySelector('img');
+      img.addEventListener('error', () => { img.hidden = true; el.classList.remove('has-img'); });
+      el.addEventListener('mouseenter', () => { t.hovered = true; });
+      el.addEventListener('mouseleave', () => { t.hovered = false; });
+      el.addEventListener('click', (event) => {
+        if (compact || event.target.closest('.t-close')) dismiss(t);
+      });
+      el.addEventListener('animationend', (event) => {
+        if (event.target === el) el.classList.remove('entering');
+      });
+      return el;
+    }
+
+    /** Fill a pet toast from `t.pet`; `bump` flashes the counter on an update. */
+    function paintPet(t, bump) {
+      const el = t.el;
+      const p = t.pet || {};
+      const lines = petLines(p, t.gainedTotal || 0, t.prevNeeded);
+      const fam = String(p.family || '').toLowerCase();
+      el.classList.toggle('done', lines.done);
+      FAMILIES.forEach((f) => el.classList.toggle(`fam-${f}`, f === fam));
+      el.querySelector('.tp-name').textContent = p.name || 'Pet';
+      el.querySelector('.tp-fam').textContent = p.family || '';
+      el.querySelector('.tp-count').textContent = lines.count;
+      el.querySelector('.tp-status').textContent = lines.status;
+      el.querySelector('.tp-prog > i').style.width = `${lines.share * 100}%`;
+      const img = el.querySelector('img');
+      if (t.icon && img.getAttribute('src') !== t.icon) {
+        img.src = t.icon;
+        img.hidden = false;
+        el.classList.add('has-img');
+      }
+      if (bump) {
+        const count = el.querySelector('.tp-count');
+        count.classList.remove('bump');
+        void count.offsetWidth;
+        count.classList.add('bump');
+      }
+    }
+
+    /** Take in a pet update; true when it went to a toast already showing. */
+    function updatePet(spec, now) {
+      let t = toasts.find((o) => o.key === spec.key);
+      if (spec.iconOnly) {
+        if (t && spec.icon) { t.icon = spec.icon; paintPet(t, false); }
+        return true;
+      }
+      if (!t) {
+        // Two pet toasts up: the oldest one switches to this pet.
+        const pets = toasts.filter((o) => o.kind === 'pet');
+        if (pets.length < 2) return false;
+        t = pets[0];
+        t.key = spec.key;
+        t.icon = null;
+        t.gainedTotal = 0;
+        t.prevNeeded = null;
+        t.el.querySelector('img').hidden = true;
+        t.el.classList.remove('has-img');
+      }
+      const before = t.pet;
+      if (spec.pet && spec.pet.stepped) t.prevNeeded = before && !before.stepped ? before.needed : t.prevNeeded;
+      else if (before && before.stepped) t.gainedTotal = 0;
+      t.pet = spec.pet;
+      t.gainedTotal = (t.gainedTotal || 0) + ((spec.pet && spec.pet.gained) || 0);
+      if (spec.icon) t.icon = spec.icon;
+      t.hideTotal = Number(spec.hideMs) > 0 ? Number(spec.hideMs) : t.hideTotal;
+      t.hideLeft = t.hideTotal;
+      paintPet(t, true);
+      paint(now);
+      return true;
+    }
+
     function build(t) {
+      if (t.kind === 'pet') return buildPet(t);
       const el = document.createElement('div');
       el.className = `toast t-${t.kind} entering`;
       el.innerHTML = `<span class="t-dot"></span>
@@ -107,6 +215,13 @@
         const el = t.el;
         el.classList.toggle('older', i > 0);
         el.hidden = i > 1;
+        if (t.kind === 'pet') {
+          el.querySelector('.t-bar').style.width = `${Math.max(0, Math.min(1, t.hideLeft / t.hideTotal)) * 100}%`;
+          const more = el.querySelector('.t-more');
+          more.hidden = !(i === 1 && toasts.length > 2);
+          if (!more.hidden) more.textContent = `+${toasts.length - 2} more`;
+          return;
+        }
         el.querySelector('.t-title').textContent = fill(t.title, t, now);
         const msg = fill(t.message, t, now);
         el.querySelector('.t-msg').textContent = msg ? (compact ? ` ${msg}` : ` — ${msg}`) : '';
@@ -138,9 +253,17 @@
      */
     function show(spec) {
       const now = Date.now();
+      if (spec.kind === 'pet' && updatePet(spec, now)) return null;
+      if (spec.iconOnly) return null;
       const hideTotal = Number(spec.hideMs) > 0 ? Number(spec.hideMs) : HIDE_MS;
       const t = { ...spec, sticky: Boolean(spec.sticky), hovered: false, hideTotal, hideLeft: hideTotal };
+      if (t.kind === 'pet') {
+        t.selfTimed = true;
+        t.gainedTotal = (t.pet && t.pet.gained) || 0;
+        t.prevNeeded = null;
+      }
       t.el = build(t);
+      if (t.kind === 'pet') paintPet(t, false);
       const res = queue.add(toasts, t, now);
       toasts = res.list;
       if (res.replaced) res.replaced.el.replaceWith(t.el);

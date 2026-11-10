@@ -116,7 +116,7 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
                         log.observe(packet, now);
                     }
                     if let Some(found) = crate::pets::parse(packet) {
-                        state.with_pets_state(|pets| pets.apply(found, now));
+                        state.apply_pet_packet(found, now);
                     }
                 }
             }
