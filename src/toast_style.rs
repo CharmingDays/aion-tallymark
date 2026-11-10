@@ -9,9 +9,10 @@ use std::collections::BTreeMap;
 
 /// Every kind, in Config order.
 pub const KINDS: &[&str] = &["upcoming", "imminent", "live", "pet", "cube"];
-/// `auto` follows Event alerts > Position (top or bottom center).
+/// `auto` follows Event alerts > Position (top or bottom center); `custom` is
+/// anywhere, at `x_pct` / `y_pct` of the monitor.
 pub const POSITIONS: &[&str] = &[
-    "auto", "top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right",
+    "auto", "top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right", "custom",
 ];
 pub const SOUNDS: &[&str] = &["default", "on", "off"];
 pub const SCALE: (u32, u32) = (70, 150);
@@ -32,6 +33,10 @@ pub struct ToastStyle {
     /// Logical pixels added after placing; + is right / down.
     pub offset_x: i32,
     pub offset_y: i32,
+    /// `custom` place: 0 is the left (top) edge, 100 the right (bottom) edge,
+    /// so the whole toast stays on the monitor at any value.
+    pub x_pct: u32,
+    pub y_pct: u32,
     /// 0 is the primary monitor, 1.. the nth monitor Windows lists.
     pub monitor: u32,
     /// Templates with `{placeholders}`; empty keeps the built-in text.
@@ -58,6 +63,8 @@ impl ToastStyle {
             position: "auto".into(),
             offset_x: 0,
             offset_y: 0,
+            x_pct: 50,
+            y_pct: 10,
             monitor: 0,
             title: String::new(),
             message: String::new(),
@@ -86,6 +93,9 @@ impl ToastStyle {
         }
         if self.offset_x.abs() > OFFSET || self.offset_y.abs() > OFFSET {
             return Err(format!("offset must be -{OFFSET} to {OFFSET} px"));
+        }
+        if self.x_pct > 100 || self.y_pct > 100 {
+            return Err("custom place must be 0 to 100%".into());
         }
         if self.monitor > MAX_MONITOR {
             return Err("unknown monitor".into());
@@ -158,6 +168,12 @@ pub fn load(saved: &Value) -> ToastStyles {
 /// Where a toast `size` (logical px) goes on a monitor at `origin` / `screen`:
 /// the top-left corner, kept on that monitor. `auto` is `fallback` (top or bottom).
 pub fn place(style: &ToastStyle, fallback: &str, origin: (f64, f64), screen: (f64, f64), size: (f64, f64), margin: f64) -> (f64, f64) {
+    let max_x = (origin.0 + screen.0 - size.0).max(origin.0);
+    let max_y = (origin.1 + screen.1 - size.1).max(origin.1);
+    if style.position == "custom" {
+        let (x, y) = custom_corner(style, screen, size);
+        return ((origin.0 + x).clamp(origin.0, max_x), (origin.1 + y).clamp(origin.1, max_y));
+    }
     let pos = if style.position == "auto" { fallback } else { style.position.as_str() };
     let (col, row) = match pos {
         "top-left" => (0, 0),
@@ -182,9 +198,39 @@ pub fn place(style: &ToastStyle, fallback: &str, origin: (f64, f64), screen: (f6
         2 => origin.1 + screen.1 - size.1 - margin - 40.0,
         _ => origin.1 + ((screen.1 - size.1) / 2.0).max(0.0),
     } + f64::from(style.offset_y);
-    let max_x = (origin.0 + screen.0 - size.0).max(origin.0);
-    let max_y = (origin.1 + screen.1 - size.1).max(origin.1);
     (x.clamp(origin.0, max_x), y.clamp(origin.1, max_y))
+}
+
+/// The free room on a monitor for a toast of `size`: where its top-left corner can go.
+fn room(screen: (f64, f64), size: (f64, f64)) -> (f64, f64) {
+    ((screen.0 - size.0).max(0.0), (screen.1 - size.1).max(0.0))
+}
+
+/// A `custom` toast's top-left corner, from the monitor's top-left, offsets included.
+pub fn custom_corner(style: &ToastStyle, screen: (f64, f64), size: (f64, f64)) -> (f64, f64) {
+    let (w, h) = room(screen, size);
+    (
+        w * f64::from(style.x_pct) / 100.0 + f64::from(style.offset_x),
+        h * f64::from(style.y_pct) / 100.0 + f64::from(style.offset_y),
+    )
+}
+
+/// The `custom` fields for a toast dropped with its top-left corner at `at`
+/// (from the monitor's top-left): whole percents, the rest as offsets.
+pub fn custom_fields(at: (f64, f64), screen: (f64, f64), size: (f64, f64)) -> Value {
+    let (w, h) = room(screen, size);
+    let axis = |at: f64, room: f64| -> (u32, i32) {
+        let at = at.clamp(0.0, room);
+        if room <= 0.0 {
+            return (0, 0);
+        }
+        let pct = (at / room * 100.0).round().clamp(0.0, 100.0);
+        let rest = (at - room * pct / 100.0).round().clamp(-f64::from(OFFSET), f64::from(OFFSET));
+        (pct as u32, rest as i32)
+    };
+    let (x_pct, offset_x) = axis(at.0, w);
+    let (y_pct, offset_y) = axis(at.1, h);
+    serde_json::json!({ "position": "custom", "x_pct": x_pct, "y_pct": y_pct, "offset_x": offset_x, "offset_y": offset_y })
 }
 
 /// The screen position `auto` resolves to, for grouping toasts in one window.
@@ -218,5 +264,18 @@ mod tests {
         s.offset_x = 500;
         let (x, y) = place(&s, "top", (0.0, 0.0), (1920.0, 1080.0), (520.0, 80.0), 36.0);
         assert_eq!((x, y), (1400.0, 1080.0 - 80.0 - 36.0 - 40.0));
+    }
+
+    #[test]
+    fn custom_places_anywhere_and_round_trips() {
+        let mut s = ToastStyle::default_for("pet");
+        s.position = "custom".into();
+        s.x_pct = 100;
+        s.y_pct = 100;
+        assert_eq!(place(&s, "top", (1920.0, 0.0), (1920.0, 1080.0), (520.0, 80.0), 36.0), (1920.0 + 1400.0, 1000.0));
+        assert!(merged(&s, &json!({"x_pct": 101})).is_err());
+        let fields = custom_fields((333.0, 517.0), (1920.0, 1080.0), (520.0, 80.0));
+        let back = merged(&s, &fields).unwrap();
+        assert_eq!(custom_corner(&back, (1920.0, 1080.0), (520.0, 80.0)), (333.0, 517.0));
     }
 }

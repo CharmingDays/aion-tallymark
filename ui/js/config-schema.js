@@ -8,6 +8,10 @@
   'use strict';
 
   const styles = root.toastStyle || (typeof require === 'function' ? require('./toast-style.js') : null);
+  /** Rows that hold no value of their own (a button, the place map). */
+  const PLAIN = ['action', 'spot'];
+  /** A toast's place: changed together by dragging it. */
+  const SPOT_KEYS = ['position', 'x_pct', 'y_pct', 'offset_x', 'offset_y'];
 
   const SECTIONS = [
     { id: 'general', label: 'General', blurb: 'App start-up, tray behaviour and how you appear in the meter.' },
@@ -128,15 +132,22 @@
       { key: 'scale', card: 'Size & place', type: 'slider', min: L.scale[0], max: L.scale[1], step: 10, unit: '%',
         label: 'Size', desc: 'Scale the whole pop-up (70–150%).', keywords: ['scale', 'zoom', 'big', 'small'] },
       { key: 'position', card: 'Size & place', type: 'select', options: places, appOnly: true,
-        label: 'Screen location', desc: k.id === 'cube' ? 'Where on the monitor it shows.' : 'Where on the monitor it shows. Auto follows Event alerts › Position.',
+        label: 'Screen location', desc: k.id === 'cube' ? 'Where on the monitor it shows. Custom (under Advanced) is anywhere.' : 'Where on the monitor it shows. Auto follows Event alerts › Position; Custom (under Advanced) is anywhere.',
         keywords: ['position', 'place', 'corner', 'top', 'bottom', 'left', 'right', 'center'] },
       { key: 'monitor', card: 'Size & place', type: 'select', appOnly: true,
         options: [[0, 'Primary'], ...Array.from({ length: L.monitor }, (_, i) => [i + 1, `Monitor ${i + 1}`])],
         label: 'Monitor', desc: 'Which screen. A monitor that is not connected falls back to the primary one.', keywords: ['screen', 'display', 'monitor'] },
+      { key: 'spot', card: 'Size & place', type: 'spot', appOnly: true, advanced: true,
+        label: 'Place anywhere', desc: 'Drag the pop-up on the map, or Place on screen to drag a sample on the real monitor (drop saves, Esc cancels). Sets Screen location to Custom.',
+        keywords: ['custom', 'anywhere', 'drag', 'position', 'place', 'move', 'map'] },
+      { key: 'x_pct', card: 'Size & place', type: 'slider', min: L.pct[0], max: L.pct[1], step: 1, unit: '%', appOnly: true, advanced: true,
+        label: 'Across (custom)', desc: '0% is the left edge, 100% the right edge, so it always fits. Changing it picks Custom.', keywords: ['custom', 'x', 'horizontal', 'anywhere', 'position'] },
+      { key: 'y_pct', card: 'Size & place', type: 'slider', min: L.pct[0], max: L.pct[1], step: 1, unit: '%', appOnly: true, advanced: true,
+        label: 'Down (custom)', desc: '0% is the top edge, 100% the bottom edge. Changing it picks Custom.', keywords: ['custom', 'y', 'vertical', 'anywhere', 'position'] },
       { key: 'offset_x', card: 'Size & place', type: 'stepper', min: -L.offset, max: L.offset, step: 10, unit: 'px', appOnly: true, advanced: true,
-        label: 'Nudge sideways', desc: 'Move it right (+) or left (−) from its spot; it stays on the monitor.', keywords: ['offset', 'x', 'horizontal', 'move'] },
+        label: 'Nudge sideways', desc: 'Fine-tune right (+) or left (\u2212) in pixels from its spot; it stays on the monitor.', keywords: ['offset', 'x', 'horizontal', 'move'] },
       { key: 'offset_y', card: 'Size & place', type: 'stepper', min: -L.offset, max: L.offset, step: 10, unit: 'px', appOnly: true, advanced: true,
-        label: 'Nudge up or down', desc: 'Move it down (+) or up (−) from its spot; it stays on the monitor.', keywords: ['offset', 'y', 'vertical', 'move'] },
+        label: 'Nudge up or down', desc: 'Fine-tune down (+) or up (\u2212) in pixels from its spot; it stays on the monitor.', keywords: ['offset', 'y', 'vertical', 'move'] },
       { key: 'title', card: 'Text', type: 'text', max: L.title, placeholder: k.title,
         label: 'Title', desc: `Blank keeps the built-in text. Placeholders: ${fields}.`, keywords: ['template', 'wording', 'name', 'heading'] },
       { key: 'message', card: 'Text', type: 'text', max: L.message, placeholder: k.message,
@@ -155,8 +166,8 @@
         label: 'Show icon', desc: k.id === 'pet' ? 'The pet portrait.' : k.id === 'cube' ? 'The cube symbol.' : 'The coloured dot.', keywords: ['icon', 'image', 'dot', 'portrait'] },
     );
     return rows.map((r) => ({
-      ...r, id: `toast.${k.id}.${r.key}`, fullLabel: `${k.label} \u203a ${r.label}`, section: 'toasts', store: r.type === 'action' ? undefined : 'toast', toastKind: k.id, group: `${k.id}:${r.card}`,
-      default: r.type === 'action' ? undefined : def[r.key], dependsOn: r.key === 'enabled' ? undefined : on,
+      ...r, id: `toast.${k.id}.${r.key}`, fullLabel: `${k.label} \u203a ${r.label}`, section: 'toasts', store: PLAIN.includes(r.type) ? undefined : 'toast', toastKind: k.id, group: `${k.id}:${r.card}`,
+      default: PLAIN.includes(r.type) ? undefined : def[r.key], dependsOn: r.key === 'enabled' ? undefined : on,
       keywords: [...(r.keywords || []), 'toast', 'pop-up', 'notification', k.short.toLowerCase()],
     }));
   }
@@ -169,7 +180,7 @@
   const forToastKind = (list, kind) => list.filter((d) => (d.toastKind ? d.toastKind === kind : !d.toastOnly || d.toastOnly.includes(kind)));
 
   const byId = (id) => SETTINGS.find((d) => d.id === id) || null;
-  const editable = (d) => d.type !== 'action';
+  const editable = (d) => !PLAIN.includes(d.type);
 
   /** The settings this build shows: app-only ones are left out in a browser. */
   const visible = (inApp) => SETTINGS.filter((d) => inApp || !d.appOnly);
@@ -257,6 +268,10 @@
 
   /** "Saved · Toast duration changed 60 → 90 s." */
   function changeText(changes, formatDamage) {
+    const kind = changes.length > 1 && changes[0].def.toastKind;
+    if (kind && changes.every((c) => c.def.toastKind === kind && SPOT_KEYS.includes(c.def.key))) {
+      return `${styles.kindOf(kind).label} \u203a moved to a new spot.`;
+    }
     if (changes.length !== 1) return `${changes.length} settings changed.`;
     const { def, before, after } = changes[0];
     const label = def.fullLabel || def.label;

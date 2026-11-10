@@ -111,6 +111,95 @@
     return changed;
   }
 
+  // ---- custom spot: the little monitor map -------------------------------
+
+  const MAP_W = 168;
+  const MARGIN = 36;
+  const screenSize = () => [window.screen && window.screen.width > 0 ? window.screen.width : 1920, window.screen && window.screen.height > 0 ? window.screen.height : 1080];
+
+  /** Where `kind`'s toast sits now, drawn on a monitor MAP_W wide (as src/toast_style.rs place). */
+  function spotMap(kind) {
+    const st = styleOf(kind);
+    const [sw, sh] = screenSize();
+    const k = MAP_W / sw;
+    const mh = Math.round(sh * k);
+    const [tw, th] = tstyles.sizeOf(kind, st);
+    const room = [Math.max(0, sw - tw), Math.max(0, sh - th)];
+    let x;
+    let y;
+    if (st.position === 'custom') {
+      x = (room[0] * st.x_pct) / 100;
+      y = (room[1] * st.y_pct) / 100;
+    } else {
+      const pos = st.position === 'auto' ? (kind === 'cube' ? 'top' : (alertSettings && alertSettings.position) || 'top') : st.position;
+      const col = /left$/.test(pos) ? 0 : /right$/.test(pos) ? 2 : 1;
+      const row = /^top/.test(pos) ? 0 : /^bottom/.test(pos) ? 2 : 1;
+      const m = kind === 'cube' ? 8 : MARGIN;
+      x = col === 0 ? m : col === 2 ? room[0] - m : room[0] / 2;
+      y = row === 0 ? m : row === 2 ? room[1] - m - 40 : room[1] / 2;
+    }
+    x = Math.min(Math.max(0, x + st.offset_x), room[0]);
+    y = Math.min(Math.max(0, y + st.offset_y), room[1]);
+    return { mw: MAP_W, mh, w: Math.max(6, Math.round(tw * k)), h: Math.max(3, Math.round(th * k)), left: Math.round(x * k), top: Math.round(y * k), custom: st.position === 'custom' };
+  }
+
+  /** Dragging the toast on the map: percents of the free room, like the real place. */
+  let spotDrag = null;
+  function spotAt(event) {
+    const { map, el } = spotDrag;
+    const r = map.getBoundingClientRect();
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const left = Math.min(Math.max(0, event.clientX - r.left - w / 2), r.width - w);
+    const top = Math.min(Math.max(0, event.clientY - r.top - h / 2), r.height - h);
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    spotDrag.x = r.width - w > 0 ? Math.round((left / (r.width - w)) * 100) : 0;
+    spotDrag.y = r.height - h > 0 ? Math.round((top / (r.height - h)) * 100) : 0;
+    el.title = `${spotDrag.x}% across \u00b7 ${spotDrag.y}% down`;
+  }
+
+  /** Save a custom spot for `kind` as one Undo step. */
+  function saveSpot(kind, fields) {
+    const list = Object.entries(fields).map(([key, v]) => ({ d: schema.byId(`toast.${kind}.${key}`), v })).filter((x) => x.d);
+    apply(list);
+  }
+
+  panel.addEventListener('pointerdown', (event) => {
+    const map = event.target.closest('[data-spot]');
+    if (!map || map.classList.contains('off') || event.button !== 0) return;
+    spotDrag = { map, el: map.querySelector('.cfg-spot-toast'), kind: map.dataset.spot, x: 0, y: 0 };
+    map.setPointerCapture(event.pointerId);
+    spotDrag.el.classList.add('on', 'drag');
+    spotAt(event);
+    event.preventDefault();
+  });
+  panel.addEventListener('pointermove', (event) => { if (spotDrag) spotAt(event); });
+  const endSpot = (event, keep) => {
+    if (!spotDrag) return;
+    const s = spotDrag;
+    spotDrag = null;
+    s.el.classList.remove('drag');
+    if (keep) saveSpot(s.kind, { position: 'custom', x_pct: s.x, y_pct: s.y, offset_x: 0, offset_y: 0 });
+    else render();
+  };
+  panel.addEventListener('pointerup', (event) => endSpot(event, true));
+  panel.addEventListener('pointercancel', (event) => endSpot(event, false));
+
+  /** "Place on screen": drag a sample on the real monitor; drop saves, Esc cancels. */
+  async function placeOnScreen(kind) {
+    setStatus('Drag the pop-up on your screen and drop it to save. Esc cancels.', 'idle');
+    let fields;
+    try {
+      fields = await bridge.placeToast(kind);
+    } catch (err) {
+      setStatus(`Place on screen: ${String((err && err.message) || err || 'could not open it.')}`, 'bad');
+      return;
+    }
+    if (!fields) { setStatus('Placing cancelled. Nothing changed.', 'idle'); return; }
+    saveSpot(kind, fields);
+  }
+
   /** One kind's style as Config has it now (for the preview and tests). */
   function styleOf(kind) {
     const s = tstyles.defaults(kind);
@@ -270,6 +359,12 @@
         return `<select class="cfg-select" data-act="select" aria-label="${esc(d.label)}"${off}>${d.options.map(([x, label]) => `<option value="${esc(JSON.stringify(x))}"${schema.same(v, x) ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
       case 'text':
         return `<input class="cfg-input cfg-text-in" data-act="text" maxlength="${d.max}" value="${esc(v ?? '')}" placeholder="${esc(d.placeholder || '')}" spellcheck="false" aria-label="${esc(d.label)}"${off}>`;
+      case 'spot': {
+        const m = spotMap(d.toastKind);
+        return `<span class="cfg-spot"><span class="cfg-spot-map${off ? ' off' : ''}" data-spot="${d.toastKind}" style="width:${m.mw}px;height:${m.mh}px" title="Drag to place">
+          <i class="cfg-spot-toast${m.custom ? ' on' : ''}" style="left:${m.left}px;top:${m.top}px;width:${m.w}px;height:${m.h}px"></i></span>
+          ${bridge.inApp ? `<button type="button" class="btn small" data-act="place-screen"${off}>Place on screen</button>` : ''}</span>`;
+      }
       case 'tcolor': {
         const presets = d.dark ? DARK : d.light ? LIGHT : pcApi.PRESETS;
         return `<span class="cfg-swatches"><button type="button" data-act="swatch" data-v="" class="cfg-sw-default${v ? '' : ' on'}" title="Default"${off}>Default</button>${presets.map((c) => `<button type="button" data-act="swatch" data-v="${c}" style="--c:${c}" class="${c === v ? 'on' : ''}" aria-label="${c}"${off}></button>`).join('')}<input type="color" data-act="color" value="${esc(v || d.fallback)}" aria-label="Custom colour"${off}></span>`;
@@ -295,7 +390,7 @@
     const reset = mod && !lockedByEnv(d)
       ? `<button type="button" class="cfg-reset" data-act="reset" title="Reset to ${esc(schema.describe(d, d.default, bossLock.formatDamage))}">${RESET_ICON}</button>`
       : '<span class="cfg-reset-gap"></span>';
-    const wide = ['stepper', 'damage', 'slider', 'segmented', 'multi', 'select', 'color', 'text', 'tcolor'].includes(d.type) ? ' wide-ctl' : '';
+    const wide = ['stepper', 'damage', 'slider', 'segmented', 'multi', 'select', 'color', 'text', 'tcolor', 'spot'].includes(d.type) ? ' wide-ctl' : '';
     return `<div class="cfg-row${mod ? ' mod' : ''}${disabled(d) && !lockedByEnv(d) ? ' dim' : ''}${wide}" data-id="${d.id}">
       <div class="cfg-text"><div class="cfg-label">${mod ? '<i class="cfg-dot" title="Changed from default"></i>' : ''}<span>${mark(d.label)}</span>${badges.join('')}${savedChip}</div>
       <div class="cfg-desc">${query ? mark(desc) : esc(desc)}</div></div>
@@ -518,6 +613,7 @@
       case 'reset-section': apply(resetList(schema.inSection(defs, current))); break;
       case 'reset-type': apply(resetList(kindDefs(toastKind))); break;
       case 'toast-test': sendTest(); break;
+      case 'place-screen': placeOnScreen(d.toastKind); break;
       case 'events': manageEvents(); break;
       default: break;
     }
@@ -532,7 +628,10 @@
       el.classList.toggle('bad', !r.ok);
       if (r.ok) apply([{ d, v: r.value }]); else setStatus(r.error, 'bad');
     }
-    else if (el.dataset.act === 'range') apply([{ d, v: Number(el.value) }]);
+    else if (el.dataset.act === 'range' && d.store === 'toast' && ['x_pct', 'y_pct'].includes(d.key)) {
+      // A custom spot value picks Custom, in the same Undo step.
+      apply([{ d: schema.byId(`toast.${d.toastKind}.position`), v: 'custom' }, { d, v: Number(el.value) }]);
+    } else if (el.dataset.act === 'range') apply([{ d, v: Number(el.value) }]);
     else if (el.dataset.act === 'select') apply([{ d, v: JSON.parse(el.value) }]);
     else if (el.dataset.act === 'color' && pcApi.isHex(el.value)) apply([{ d, v: el.value.toLowerCase() }]);
   });

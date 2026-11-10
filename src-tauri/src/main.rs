@@ -352,7 +352,7 @@ fn deliver(app: &AppHandle, toasts: &Toasts, mut toast: serde_json::Value) -> ta
     let style = app.state::<Arc<AppState>>().toast_style(&kind);
     let fallback = alerts_place(app);
     let place = toast_style::resolved_position(&style, fallback).to_string();
-    let lane_key = format!("{}|{}|{}|{}", style.monitor, place, style.offset_x, style.offset_y);
+    let lane_key = format!("{}|{}|{}|{}|{}|{}", style.monitor, place, style.x_pct, style.y_pct, style.offset_x, style.offset_y);
     toast["style"] = serde_json::to_value(&style).unwrap_or_default();
     toast["place"] = place.into();
     let key = toast["key"].clone();
@@ -513,6 +513,110 @@ fn toast_done(window: WebviewWindow, toasts: State<'_, Toasts>) {
 #[tauri::command]
 fn set_toast_style(state: State<'_, Arc<AppState>>, kind: String, patch: serde_json::Value) -> Result<(), String> {
     state.set_toast_style(&kind, &patch)
+}
+
+const PLACER: &str = "toast-placer";
+
+/// Config's "Place on screen": a see-through window over one monitor with a
+/// draggable sample of one toast type. It only reads this PC's screen; nothing
+/// is sent to the game. Config saves the spot (so Undo works).
+#[derive(Default)]
+struct Placer {
+    seq: AtomicU64,
+    now: Mutex<Option<Placing>>,
+}
+
+struct Placing {
+    seq: u64,
+    info: serde_json::Value,
+    screen: (f64, f64),
+    size: (f64, f64),
+    reply: tokio::sync::oneshot::Sender<Option<serde_json::Value>>,
+}
+
+/// About the logical size a toast of `kind` takes at its style's size (the
+/// event and pet windows fit their content).
+fn toast_size(kind: &str, style: &ToastStyle) -> (f64, f64) {
+    let k = f64::from(style.scale) / 100.0;
+    match kind {
+        "cube" => (CUBE_SIZE.0 * k, CUBE_SIZE.1 * k),
+        "pet" => (TOAST_WIDTH * k, 84.0 * k),
+        _ => (TOAST_WIDTH * k, 64.0 * k),
+    }
+}
+
+/// End placing `seq` (any when `None`): the custom fields for a drop at `at`,
+/// or `None` for Esc or a closed window.
+fn finish_placing(app: &AppHandle, seq: Option<u64>, at: Option<(f64, f64)>) {
+    let placing = {
+        let mut now = app.state::<Placer>().now.lock().unwrap();
+        if now.as_ref().is_some_and(|p| seq.map_or(true, |s| s == p.seq)) { now.take() } else { None }
+    };
+    if let Some(p) = placing {
+        let _ = p.reply.send(at.map(|at| toast_style::custom_fields(at, p.screen, p.size)));
+        if let Some(window) = app.get_webview_window(PLACER) {
+            let _ = window.close();
+        }
+    }
+}
+
+/// Show the placer for `kind` on its monitor; resolves with the fields to save
+/// once the sample is dropped, or `None` when cancelled.
+#[tauri::command]
+async fn place_toast(app: AppHandle, kind: String) -> Result<Option<serde_json::Value>, String> {
+    if !toast_style::KINDS.contains(&kind.as_str()) {
+        return Err("unknown toast type".into());
+    }
+    let style = app.state::<Arc<AppState>>().toast_style(&kind);
+    let (origin, screen) = monitor_rect(&app, style.monitor).ok_or("no monitor found")?;
+    let size = toast_size(&kind, &style);
+    let (fallback, margin) = if kind == "cube" { ("top", 8.0) } else { (alerts_place(&app), TOAST_MARGIN) };
+    let at = toast_style::place(&style, fallback, origin, screen, size, margin);
+    finish_placing(&app, None, None);
+    if let Some(old) = app.get_webview_window(PLACER) {
+        let _ = old.destroy();
+    }
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    let seq = {
+        let placer = app.state::<Placer>();
+        let seq = placer.seq.fetch_add(1, Ordering::Relaxed) + 1;
+        let info = serde_json::json!({ "kind": kind, "style": style, "size": [size.0, size.1], "at": [at.0 - origin.0, at.1 - origin.1] });
+        *placer.now.lock().unwrap() = Some(Placing { seq, info, screen, size, reply });
+        seq
+    };
+    let window = WebviewWindowBuilder::new(&app, PLACER, WebviewUrl::App("placer.html".into()))
+        .title("aion2dps - place pop-up")
+        .inner_size(screen.0, screen.1)
+        .position(origin.0, origin.1)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .focused(true)
+        .build()
+        .map_err(|err| err.to_string())?;
+    let handle = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            finish_placing(&handle, Some(seq), None);
+        }
+    });
+    let _ = window.set_focus();
+    Ok(answer.await.ok().flatten())
+}
+
+/// The placer page: the type, its style, the sample's size and where it is now.
+#[tauri::command]
+fn placer_info(placer: State<'_, Placer>) -> Option<serde_json::Value> {
+    placer.now.lock().unwrap().as_ref().map(|p| p.info.clone())
+}
+
+/// The sample was dropped with its top-left at `at` (window px), or cancelled.
+#[tauri::command]
+fn placer_done(app: AppHandle, at: Option<(f64, f64)>) {
+    finish_placing(&app, None, at.filter(|(x, y)| x.is_finite() && y.is_finite()));
 }
 
 /// Config's "Send test toast" for the hidden cube: the cube window shows a
@@ -881,6 +985,7 @@ fn main() {
         .manage(state.clone())
         .manage(Dashboard(dashboard))
         .manage(Toasts::default())
+        .manage(Placer::default())
         .manage(PetIcons::default())
         .manage(OverlaySaves::default())
         .manage(tray_watch::TrayWatch::default())
@@ -900,6 +1005,9 @@ fn main() {
             set_debug_logs,
             set_toast_style,
             test_cube_toast,
+            place_toast,
+            placer_info,
+            placer_done,
             cube_visible,
             overlay_pointer,
             overlay_hit,

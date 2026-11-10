@@ -120,6 +120,8 @@
       : post('/api/toast-style', { kind, patch })),
     /** Show a sample in the hidden cube window (app only). */
     testCubeToast: () => (inApp ? tauri.core.invoke('test_cube_toast') : Promise.resolve()),
+    /** "Place on screen": the custom-spot fields where the sample was dropped, or null (Esc). App only. */
+    placeToast: (kind) => (inApp ? tauri.core.invoke('place_toast', { kind }) : Promise.resolve(null)),
     /** Overlay CSS-pixel pointer, or null when unavailable. */
     overlayPointer: () => (inApp ? tauri.core.invoke('overlay_pointer') : Promise.resolve(null)),
     /** Capture clicks (true) or let them through to the game (false). */

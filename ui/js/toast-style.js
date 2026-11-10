@@ -26,8 +26,9 @@
     ['auto', 'Same as Event alerts position'], ['top-left', 'Top left'], ['top', 'Top center'], ['top-right', 'Top right'],
     ['left', 'Middle left'], ['center', 'Center'], ['right', 'Middle right'],
     ['bottom-left', 'Bottom left'], ['bottom', 'Bottom center'], ['bottom-right', 'Bottom right'],
+    ['custom', 'Custom (anywhere)'],
   ];
-  const LIMITS = { scale: [70, 150], offset: 1000, monitor: 6, font: [10, 32], opacity: [20, 100], title: 80, message: 160 };
+  const LIMITS = { scale: [70, 150], offset: 1000, pct: [0, 100], monitor: 6, font: [10, 32], opacity: [20, 100], title: 80, message: 160 };
   const FONT = { upcoming: 13, imminent: 13, live: 13, pet: 14, cube: 23 };
   /** Built-in backgrounds, for opacity without a custom colour. */
   const BACKGROUND = { cube: '#101d25' };
@@ -35,7 +36,7 @@
 
   function defaults(kind) {
     return {
-      enabled: true, scale: 100, position: 'auto', offset_x: 0, offset_y: 0, monitor: 0,
+      enabled: true, scale: 100, position: 'auto', offset_x: 0, offset_y: 0, x_pct: 50, y_pct: 10, monitor: 0,
       title: '', message: '', font_px: FONT[kind] || 13,
       accent: '', background: '', text: '', bg_opacity: 100, show_icon: true, sound: 'default',
     };
@@ -90,6 +91,10 @@
     el.classList.toggle('no-icon', s.show_icon === false);
   }
 
+  /** About the logical size of a `kind` toast at 100% (as src-tauri's toast_size). */
+  const SIZE = { cube: [460, 140], pet: [520, 84] };
+  const sizeOf = (kind, style) => (SIZE[kind] || [520, 64]).map((n) => (n * (Number(style && style.scale) || 100)) / 100);
+
   /** Whether this toast plays the chime; `alertsSound` is Event alerts > Sound. */
   const soundOn = (style, alertsSound) => style.sound === 'on' || (style.sound === 'default' && Boolean(alertsSound));
 
@@ -125,7 +130,7 @@
   const remember = (styles) => { if (styles) current = styles; };
   const styleFor = (spec) => of(spec && spec.style ? spec.style : current, spec && spec.kind);
 
-  const api = { KINDS, POSITIONS, LIMITS, FONT, defaults, of, kindOf, fill, isHex, rgba, apply, soundOn, chime, remember, styleFor };
+  const api = { KINDS, POSITIONS, LIMITS, FONT, defaults, of, kindOf, fill, isHex, rgba, apply, soundOn, chime, remember, styleFor, sizeOf };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.toastStyle = api;
 })(typeof window !== 'undefined' ? window : globalThis);

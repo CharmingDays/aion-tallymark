@@ -71,6 +71,10 @@ test('Toasts & pop-ups: one set of rows per type, with checked limits', () => {
   assert.deepEqual(s.parse(s.byId('toast.pet.accent'), ''), { ok: true, value: '' });
   assert.equal(s.parse(s.byId('toast.pet.accent'), 'red').ok, false);
   assert.equal(s.changeText([{ def: s.byId('toast.pet.scale'), before: 100, after: 120 }]), 'Pet progress \u203a Size changed 100% \u2192 120%.');
+  const x = s.byId('toast.cube.x_pct');
+  assert.deepEqual([x.min, x.max, x.advanced, s.editable(s.byId('toast.cube.spot'))], [0, 100, true, false]);
+  assert.ok(s.byId('toast.cube.position').options.some(([v]) => v === 'custom'));
+  assert.equal(s.changeText([{ def: x, before: 50, after: 80 }, { def: s.byId('toast.cube.position'), before: 'auto', after: 'custom' }]), 'Hidden cube \u203a moved to a new spot.');
   const cards = s.cards(s.forToastKind(defs, 'upcoming'), 'toasts').map((c) => c.card);
   assert.deepEqual(cards, ['Show', 'Size & place', 'Text', 'Colors']);
 });
