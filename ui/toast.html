@@ -7,7 +7,10 @@
 <link rel="stylesheet" href="css/notify.css">
 <style>
   html, body { margin: 0; background: transparent; overflow: hidden; }
-  body .notify-host { position: static; transform: none; width: auto; padding: 8px 10px; }
+  body .notify-host { position: static; transform: none; width: auto; padding: 8px 10px; align-items: center; }
+  body .notify-host.place-left { align-items: flex-start; }
+  body .notify-host.place-right { align-items: flex-end; }
+  body .notify-host .toast { flex: 0 0 auto; width: 500px; box-sizing: border-box; }
 </style>
 </head>
 <body>
@@ -15,6 +18,7 @@
 <script src="js/bridge.js"></script>
 <script src="js/alerts-schedule.js"></script>
 <script src="js/toast-queue.js"></script>
+<script src="js/toast-style.js"></script>
 <script src="js/notify.js"></script>
 <script src="js/toast.js"></script>
 </body>

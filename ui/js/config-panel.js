@@ -3,6 +3,8 @@
 // (js/config-schema.js). Every change saves at once; the footer says what was
 // saved with a small green "Saved", and Undo puts the last change back.
 // meter.js feeds it the live settings (update) and the alerts notifier (attach).
+// Toasts & pop-ups shows one toast type at a time (a picker on top), a live
+// preview of it and "Send test toast", which only shows a sample on this PC.
 (() => {
   const panel = document.getElementById('config-panel');
   const button = document.getElementById('open-config');
@@ -12,6 +14,7 @@
   const bridge = window.meterBridge;
   const bossLock = window.bossLock;
   const pcApi = window.playerColors;
+  const tstyles = window.toastStyle;
   const { esc } = window.fmt;
   const $ = (sel) => panel.querySelector(sel);
 
@@ -21,6 +24,12 @@
   const FRESH = ['overlay_opacity', 'debug_pets', 'debug_position', 'debug_cubes', 'pet_toasts', 'pet_toast_secs'];
   const SAVED_MS = 2400;
   const STATUS_MS = 6000;
+  /** Sections with a NEW badge in the sidebar until Config has been closed once. */
+  const FRESH_SECTIONS = ['toasts'];
+  /** Dark fills for a toast background. */
+  const DARK = ['#161a21', '#0b0f14', '#101d25', '#1e1b2e', '#102016', '#251d12'];
+  const LIGHT = ['#e6e9ef', '#ffffff', '#fde68a', '#a5f3fc', '#bbf7d0', '#fbcfe8'];
+  const CUBE_ICON = '<svg class="cube-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 29 9.5v13L16 30 3 22.5v-13ZM3 9.5 16 17l13-7.5M16 17v13M9.5 5.8l13 7.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
   const ENV_NAME = { pets: 'AION2DPS_DEBUG_PETS', position: 'AION2DPS_DEBUG_POSITION', cubes: 'AION2DPS_DEBUG_CUBES' };
 
   const ICONS = {
@@ -31,6 +40,7 @@
     exploration: '<circle cx="8" cy="8" r="5.5"/><path d="M10.3 5.7L9 9 5.7 10.3 7 7z"/>',
     pets: '<circle cx="4.5" cy="6" r="1.3"/><circle cx="7" cy="3.8" r="1.3"/><circle cx="10" cy="4.3" r="1.3"/><circle cx="12" cy="7" r="1.3"/><path d="M5.5 12.5c0-2 1.5-3.8 3.3-3.8s2.7 1.8 2.7 3c0 1.3-1.3 1.4-3 1.1-1.5-.3-3 .9-3-.3z"/>',
     achievements: '<path d="M5 2.5h6v3a3 3 0 0 1-6 0zM5 3.5H2.8a2 2 0 0 0 2.4 3M11 3.5h2.2a2 2 0 0 1-2.4 3M8 8.5v3M5.5 13.5h5M6.5 11.5h3"/>',
+    toasts: '<rect x="2.5" y="3.5" width="11" height="6" rx="1.5"/><path d="M5 6.5h4.5M4.5 12.5h7"/>',
     advanced: '<path d="M9.8 2.7a3.2 3.2 0 0 0-3.9 4.1L2.6 10.1a1.1 1.1 0 0 0 0 1.6l1.7 1.7a1.1 1.1 0 0 0 1.6 0l3.3-3.3a3.2 3.2 0 0 0 4.1-3.9l-1.9 1.9-1.9-.4-.4-1.9z"/>',
   };
   const icon = (id) => `<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${ICONS[id] || ''}</svg>`;
@@ -43,6 +53,9 @@
   let alertSettings = null;
   let notifier = null;
   let current = 'general';
+  let toastKind = 'upcoming';
+  let previewHost = null;
+  let pageHost = null;
   let query = '';
   const openAdvanced = new Set();
   const busy = new Set();
@@ -86,6 +99,25 @@
     return changed;
   }
 
+  /** The toast styles from each snapshot (`toast_styles`). */
+  function readToasts(map) {
+    if (!map) return false;
+    let changed = false;
+    for (const d of defs) {
+      if (d.store !== 'toast' || busy.has(d.id)) continue;
+      const v = tstyles.of(map, d.toastKind)[d.key];
+      if (!schema.same(vals[d.id], v)) { vals[d.id] = v; changed = true; }
+    }
+    return changed;
+  }
+
+  /** One kind's style as Config has it now (for the preview and tests). */
+  function styleOf(kind) {
+    const s = tstyles.defaults(kind);
+    for (const d of defs) if (d.store === 'toast' && d.toastKind === kind && vals[d.id] !== undefined) s[d.key] = vals[d.id];
+    return s;
+  }
+
   async function loadAlerts() {
     try { readAlerts(notifier ? await notifier.reload() : await bridge.getAlerts()); } catch (_) { /* row shows defaults */ }
   }
@@ -95,6 +127,7 @@
   async function write(d, v) {
     if (d.id === 'you_color') { pcApi.writeYouColor(v); return; }
     if (d.id === 'overlay_opacity') { localStorage.setItem(OPACITY_KEY, (v / 100).toFixed(1)); return; }
+    if (d.store === 'toast') return bridge.setToastStyle(d.toastKind, { [d.key]: v });
     if (d.store === 'alerts') {
       if (!alertSettings) throw new Error('Alerts are not loaded yet.');
       const next = JSON.parse(JSON.stringify(alertSettings));
@@ -235,6 +268,12 @@
         }).join('')}</span>`;
       case 'select':
         return `<select class="cfg-select" data-act="select" aria-label="${esc(d.label)}"${off}>${d.options.map(([x, label]) => `<option value="${esc(JSON.stringify(x))}"${schema.same(v, x) ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
+      case 'text':
+        return `<input class="cfg-input cfg-text-in" data-act="text" maxlength="${d.max}" value="${esc(v ?? '')}" placeholder="${esc(d.placeholder || '')}" spellcheck="false" aria-label="${esc(d.label)}"${off}>`;
+      case 'tcolor': {
+        const presets = d.dark ? DARK : d.light ? LIGHT : pcApi.PRESETS;
+        return `<span class="cfg-swatches"><button type="button" data-act="swatch" data-v="" class="cfg-sw-default${v ? '' : ' on'}" title="Default"${off}>Default</button>${presets.map((c) => `<button type="button" data-act="swatch" data-v="${c}" style="--c:${c}" class="${c === v ? 'on' : ''}" aria-label="${c}"${off}></button>`).join('')}<input type="color" data-act="color" value="${esc(v || d.fallback)}" aria-label="Custom colour"${off}></span>`;
+      }
       case 'color':
         return `<span class="cfg-swatches">${pcApi.PRESETS.map((c) => `<button type="button" data-act="swatch" data-v="${c}" style="--c:${c}" class="${c === v ? 'on' : ''}" aria-label="${c}"></button>`).join('')}<input type="color" data-act="color" value="${esc(v || d.default)}" aria-label="Custom colour"></span>`;
       case 'action':
@@ -256,7 +295,7 @@
     const reset = mod && !lockedByEnv(d)
       ? `<button type="button" class="cfg-reset" data-act="reset" title="Reset to ${esc(schema.describe(d, d.default, bossLock.formatDamage))}">${RESET_ICON}</button>`
       : '<span class="cfg-reset-gap"></span>';
-    const wide = ['stepper', 'damage', 'slider', 'segmented', 'multi', 'select', 'color'].includes(d.type) ? ' wide-ctl' : '';
+    const wide = ['stepper', 'damage', 'slider', 'segmented', 'multi', 'select', 'color', 'text', 'tcolor'].includes(d.type) ? ' wide-ctl' : '';
     return `<div class="cfg-row${mod ? ' mod' : ''}${disabled(d) && !lockedByEnv(d) ? ' dim' : ''}${wide}" data-id="${d.id}">
       <div class="cfg-text"><div class="cfg-label">${mod ? '<i class="cfg-dot" title="Changed from default"></i>' : ''}<span>${mark(d.label)}</span>${badges.join('')}${savedChip}</div>
       <div class="cfg-desc">${query ? mark(desc) : esc(desc)}</div></div>
@@ -273,7 +312,8 @@
       rows.push(`<button type="button" class="cfg-fold${open ? ' open' : ''}" data-fold="${esc(key)}"><span class="cfg-chev" aria-hidden="true">\u203a</span>Advanced <span class="cfg-count">${adv.length}</span><span class="cfg-fold-hint">${esc(extra)}</span></button>`);
       if (open) adv.forEach((d) => rows.push(row(d, null)));
     }
-    const title = query ? `${sectionOf(c.section).label} \u203a ${c.card}` : c.card;
+    const kindName = c.toastKind ? `${tstyles.kindOf(c.toastKind).label} \u203a ` : '';
+    const title = query ? `${sectionOf(c.section).label} \u203a ${kindName}${c.card}` : c.card;
     const fresh = !query && c.defs.some(isFresh) && c.defs.every((d) => FRESH.includes(d.id)) ? '<span class="cfg-badge new">NEW</span>' : '';
     let aside = '';
     if (!query && c.section !== section) aside = `Also listed under ${sectionOf(c.section).label}`;
@@ -289,6 +329,8 @@
       html = `<div class="cfg-sec-head"><div><h3>${res.total} result${res.total === 1 ? '' : 's'} for \u201c${esc(query.trim())}\u201d</h3>
         <p>Matches labels, descriptions and keywords across every section. Sections with no match are dimmed in the sidebar.</p></div></div>
         ${res.cards.map((c) => card(c, null)).join('') || '<div class="cfg-empty">No setting matches. Try another word.</div>'}`;
+    } else if (current === 'toasts') {
+      html = toastsContent();
     } else {
       const sec = sectionOf(current);
       const list = schema.inSection(defs, current);
@@ -298,19 +340,104 @@
         ${list.length ? schema.cards(list, current).map((c) => card(c, current)).join('') : `<div class="cfg-empty">${sec.soon ? 'Achievements are coming soon. Their settings will show up here.' : 'Nothing to set here in the browser. Open the app for these settings.'}</div>`}`;
     }
     box.innerHTML = html;
+    paintPreview();
+  }
+
+  // ---- toasts & pop-ups ---------------------------------------------------
+
+  const kindDefs = (kind) => schema.forToastKind(schema.inSection(defs, 'toasts'), kind);
+
+  function toastsContent() {
+    const sec = sectionOf('toasts');
+    const k = tstyles.kindOf(toastKind);
+    const list = kindDefs(toastKind);
+    const canType = resetList(list).length > 0;
+    const canAll = resetList(schema.inSection(defs, 'toasts')).length > 0;
+    const picker = tstyles.KINDS.map((x) => {
+      const mod = defs.some((d) => d.toastKind === x.id && schema.isModified(d, vals[d.id]));
+      const on = x.id === toastKind;
+      return `<button type="button" role="tab" class="${on ? 'on' : ''}" data-toast-kind="${x.id}" aria-selected="${on}">${mod ? '<i class="cfg-dot"></i>' : ''}${esc(x.label)}</button>`;
+    }).join('');
+    const off = toastOff(toastKind);
+    return `<div class="cfg-sec-head"><div><h3>${esc(sec.label)}</h3><p>${esc(sec.blurb)}</p></div>
+      <div class="cfg-sec-acts"><button type="button" class="btn small" data-act="reset-type"${canType ? '' : ' disabled'}>${RESET_ICON}Reset type</button>
+      <button type="button" class="btn small cfg-reset-sec" data-act="reset-section"${canAll ? '' : ' disabled'}>${RESET_ICON}Reset section</button></div></div>
+      <div class="cfg-kinds" role="tablist" aria-label="Pop-up type">${picker}</div>
+      <div class="cfg-card cfg-tp"><div class="cfg-card-head"><span>PREVIEW \u00b7 ${esc(k.label.toUpperCase())}</span><span class="cfg-aside">${esc(k.help)}</span></div>
+        <div class="cfg-tp-stage${off ? ' off' : ''}" id="cfg-tp-stage"></div>
+        <div class="cfg-tp-foot"><span class="cfg-desc">${off ? 'This pop-up is off. ' : ''}The test shows a sample on this PC only; nothing is sent to the game.</span>
+        <button type="button" class="btn small" data-act="toast-test">Send test toast</button></div></div>
+      ${schema.cards(list, 'toasts').map((c) => card(c, 'toasts')).join('')}`;
+  }
+
+  /** Whether the kind's pop-up is turned off. */
+  function toastOff(kind) {
+    if (kind === 'pet') return vals.pet_toasts === false;
+    if (kind === 'cube') return vals.hidden_cube_alerts === false;
+    return vals[`toast.${kind}.enabled`] === false;
+  }
+
+  function cubeText(style) {
+    const fields = { title: 'Hidden Cube nearby', subline: 'Hidden Cube \u00b7 42 m \u00b7 getting closer', type: 'Hidden Cube', distance: '42 m' };
+    return {
+      title: style.title ? tstyles.fill(style.title, fields) : fields.title,
+      subline: style.message ? tstyles.fill(style.message, fields) : fields.subline,
+    };
+  }
+
+  /** Draw the selected type's sample into the preview card. */
+  function paintPreview() {
+    if (previewHost) { previewHost.destroy(); previewHost = null; }
+    const stage = $('#cfg-tp-stage');
+    if (!stage) return;
+    const style = styleOf(toastKind);
+    if (toastKind === 'cube') {
+      const t = cubeText(style);
+      stage.innerHTML = `<aside class="cfg-cube">${CUBE_ICON}<div class="cube-copy"><strong class="cube-title">${esc(t.title)}</strong><span class="cube-subline">${esc(t.subline)}</span></div></aside>`;
+      tstyles.apply(stage.firstElementChild, style, 'cube');
+      return;
+    }
+    if (!window.notify) return;
+    previewHost = window.notify.createHost({ container: stage, silent: true });
+    const spec = window.notify.sample(toastKind, Date.now(), toastKind === 'pet' ? { hideMs: 3600000 } : { sticky: true });
+    previewHost.show({ ...spec, style });
+  }
+
+  /** "Send test toast": a sample of the selected type, shown on this PC only. */
+  async function sendTest() {
+    const kind = toastKind;
+    const k = tstyles.kindOf(kind);
+    const style = styleOf(kind);
+    try {
+      if (kind === 'cube') {
+        if (!bridge.inApp) { setStatus('The hidden cube test shows in the app.', 'idle'); return; }
+        await bridge.testCubeToast();
+      } else {
+        const now = Date.now();
+        const extra = kind === 'pet' ? { hideMs: (Number(vals.pet_toast_secs) || 60) * 1000 } : { key: `test:${kind}:${now}`, hideMs: 8000, snooze: false };
+        const spec = window.notify.sample(kind, now, extra);
+        if (bridge.inApp) await bridge.showToast(spec);
+        else (pageHost = pageHost || window.notify.createHost()).show({ ...spec, style });
+        if (k.event && tstyles.soundOn(style, alertSettings && alertSettings.sound)) tstyles.chime(`test:${now}`);
+      }
+      setStatus(`Test toast shown: ${k.label}. Only on this PC.`, 'idle');
+    } catch (err) {
+      setStatus(`Test toast: ${String((err && err.message) || err || 'could not show it.')}`, 'bad');
+    }
   }
 
   function renderNav() {
     const res = query.trim() ? schema.search(defs, query) : null;
     $('#cfg-nav-list').innerHTML = schema.SECTIONS.map((s) => {
       const list = schema.inSection(defs, s.id);
-      const count = res ? res.counts[s.id] : list.length;
+      const count = res ? res.counts[s.id] : s.id === 'toasts' ? kindDefs(toastKind).length : list.length;
+      const fresh = !res && FRESH_SECTIONS.includes(s.id) && !seen.has(`section:${s.id}`) ? '<span class="cfg-badge new">NEW</span>' : '';
       const mod = list.some((d) => schema.isModified(d, vals[d.id]));
       const dim = res ? count === 0 : s.soon || !list.length;
       const on = !res && s.id === current;
       const tail = !res && (s.soon || !list.length) ? '<span class="cfg-soon">SOON</span>' : `<span class="cfg-count${res && count ? ' hit' : ''}">${count}</span>`;
       return `<button type="button" class="cfg-nav-item${on ? ' on' : ''}${dim ? ' dim' : ''}" data-section="${s.id}" title="${esc(s.label)}"${on ? ' aria-current="page"' : ''}>
-        ${icon(s.id)}<span class="cfg-nav-label">${esc(s.label)}</span>${mod && !res ? '<i class="cfg-dot"></i>' : ''}${tail}</button>`;
+        ${icon(s.id)}<span class="cfg-nav-label">${esc(s.label)}</span>${fresh}${mod && !res ? '<i class="cfg-dot"></i>' : ''}${tail}</button>`;
     }).join('');
   }
 
@@ -355,6 +482,12 @@
       $('#cfg-content').scrollTop = 0;
       return;
     }
+    const kindBtn = event.target.closest('[data-toast-kind]');
+    if (kindBtn) {
+      toastKind = kindBtn.dataset.toastKind;
+      render();
+      return;
+    }
     const fold = event.target.closest('[data-fold]');
     if (fold) {
       const k = fold.dataset.fold;
@@ -383,6 +516,8 @@
       case 'swatch': apply([{ d, v: act.dataset.v }]); break;
       case 'reset': apply([{ d, v: d.default }]); break;
       case 'reset-section': apply(resetList(schema.inSection(defs, current))); break;
+      case 'reset-type': apply(resetList(kindDefs(toastKind))); break;
+      case 'toast-test': sendTest(); break;
       case 'events': manageEvents(); break;
       default: break;
     }
@@ -392,6 +527,11 @@
     const d = rowDef(el);
     if (!d) return;
     if (el.dataset.act === 'num') commitNumber(el);
+    else if (el.dataset.act === 'text') {
+      const r = schema.parse(d, el.value);
+      el.classList.toggle('bad', !r.ok);
+      if (r.ok) apply([{ d, v: r.value }]); else setStatus(r.error, 'bad');
+    }
     else if (el.dataset.act === 'range') apply([{ d, v: Number(el.value) }]);
     else if (el.dataset.act === 'select') apply([{ d, v: JSON.parse(el.value) }]);
     else if (el.dataset.act === 'color' && pcApi.isHex(el.value)) apply([{ d, v: el.value.toLowerCase() }]);
@@ -404,7 +544,7 @@
     }
   });
   panel.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && event.target.dataset && event.target.dataset.act === 'num') { event.preventDefault(); event.target.blur(); }
+    if (event.key === 'Enter' && event.target.dataset && ['num', 'text'].includes(event.target.dataset.act)) { event.preventDefault(); event.target.blur(); }
   });
 
   const search = $('#cfg-search');
@@ -416,6 +556,7 @@
       if (!first) return;
       const id = first.defs[0].id;
       current = first.section;
+      if (first.toastKind) toastKind = first.toastKind;
       if (first.defs[0].advanced) openAdvanced.add(`${first.section}:${first.card}`);
       query = '';
       search.value = '';
@@ -447,6 +588,8 @@
     panel.hidden = true;
     button.classList.remove('on');
     FRESH.forEach((id) => seen.add(id));
+    FRESH_SECTIONS.forEach((id) => seen.add(`section:${id}`));
+    if (previewHost) { previewHost.destroy(); previewHost = null; }
     try { localStorage.setItem(SEEN_KEY, JSON.stringify([...seen])); } catch (_) { /* private mode */ }
   }
   async function open() {
@@ -482,9 +625,10 @@
   readLocal();
   window.configPanel = {
     /** Live settings from each snapshot. */
-    update(settings) {
+    update(settings, toastStyles) {
       if (!settings) return;
-      const changed = readSettings(settings);
+      const styled = readToasts(toastStyles);
+      const changed = readSettings(settings) || styled;
       const typing = panel.contains(document.activeElement) && document.activeElement.matches('input, select');
       if (changed && !panel.hidden && !typing) render();
     },

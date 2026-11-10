@@ -22,6 +22,10 @@
 // a summon or level up switches it to the completed look, and a soul for a
 // different pet takes over the one pet toast (never two at once). They keep their own clock
 // (see toast-queue.js), hiding `hideMs` after the last soul.
+//
+// Each kind has a style (Config > Toasts & pop-ups, toast-style.js): on/off,
+// size, colours, opacity, icon, sound and title/message templates. The app adds
+// it to each toast as `spec.style`; a browser page uses the last live snapshot.
 (function () {
   const { esc } = window.fmt;
   const { countdown, due, IMMINENT_MS, MINUTE } = window.alertSchedule;
@@ -57,37 +61,19 @@
 
   const ICON_CLOSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 
-  /** A short two-note chime. Several windows may fire the same toast, so only one plays it. */
-  let audio = null;
-  function chime(key) {
-    try {
-      const last = localStorage.getItem('aion2dps-chime');
-      if (last === key) return;
-      localStorage.setItem('aion2dps-chime', key);
-    } catch (_) { /* no storage: play anyway */ }
-    try {
-      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-      if (audio.state === 'suspended') audio.resume();
-      const t = audio.currentTime;
-      [[880, 0], [1320, 0.12]].forEach(([freq, delay]) => {
-        const osc = audio.createOscillator();
-        const gain = audio.createGain();
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.0001, t + delay);
-        gain.gain.exponentialRampToValueAtTime(0.12, t + delay + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t + delay + 0.18);
-        osc.connect(gain).connect(audio.destination);
-        osc.start(t + delay);
-        osc.stop(t + delay + 0.2);
-      });
-    } catch (_) { /* no audio device */ }
-  }
+  const styles = window.toastStyle;
+  const chime = styles.chime;
 
-  function createHost({ compact = false, onChange = null } = {}) {
+  /**
+   * `container`: show the toasts inside it (the Config preview), not over the page.
+   * `scale`: size toasts by their style (the toast window sizes itself instead).
+   * `silent`: never chime (the preview redraws often).
+   */
+  function createHost({ compact = false, onChange = null, container = null, scale = true, silent = false } = {}) {
     const host = document.createElement('div');
-    host.className = `notify-host top${compact ? ' compact' : ''}`;
+    host.className = `notify-host top${compact ? ' compact' : ''}${container ? ' inline' : ''}`;
     host.setAttribute('aria-live', 'polite');
-    document.body.append(host);
+    (container || document.body).append(host);
 
     /** Queue order, top first. Each: { key, kind, title, message, eventAt, snooze, hideLeft, el, hovered } */
     let toasts = [];
@@ -102,6 +88,23 @@
 
     /** `{text}` with the live countdown filled in where `{left}` stands. */
     const fill = (text, t, now) => String(text || '').replace('{left}', t.eventAt == null ? '' : countdown(t.eventAt - now));
+
+    /** An event toast's title and message: its style's templates, or the built-in text. */
+    function eventText(t, now) {
+      const s = t.styleNow;
+      const left = t.eventAt == null ? '' : countdown(t.eventAt - now);
+      const fields = { event: t.event || t.title, message: t.note || '', left };
+      return {
+        title: s.title ? styles.fill(s.title, fields) : fill(t.title, t, now),
+        message: s.message ? styles.fill(s.message, fields) : fill(t.message, t, now),
+      };
+    }
+
+    /** Put the kind's style on a toast's element. */
+    function dress(t) {
+      t.styleNow = styles.styleFor(t);
+      styles.apply(t.el, t.styleNow, t.kind, { scale });
+    }
 
     function buildPet(t) {
       const el = document.createElement('div');
@@ -132,10 +135,17 @@
       const fam = String(p.family || '').toLowerCase();
       el.classList.toggle('done', lines.done);
       FAMILIES.forEach((f) => el.classList.toggle(`fam-${f}`, f === fam));
-      el.querySelector('.tp-name').textContent = p.name || 'Pet';
+      const s = t.styleNow || styles.defaults('pet');
+      const fields = {
+        pet: p.name || 'Pet', family: p.family || '', level: p.level == null ? '' : p.level,
+        souls: p.souls == null ? '' : p.souls, needed: p.needed == null ? 'max' : p.needed,
+        count: lines.count, gained: t.gainedTotal || 0, status: lines.status,
+        next: p.needed == null ? 'max level' : `${p.needed - p.souls} more`,
+      };
+      el.querySelector('.tp-name').textContent = s.title ? styles.fill(s.title, fields) : fields.pet;
       el.querySelector('.tp-fam').textContent = p.family || '';
       el.querySelector('.tp-count').textContent = lines.count;
-      el.querySelector('.tp-status').textContent = lines.status;
+      el.querySelector('.tp-status').textContent = s.message ? styles.fill(s.message, fields) : lines.status;
       el.querySelector('.tp-prog > i').style.width = `${lines.share * 100}%`;
       const img = el.querySelector('img');
       if (t.icon && img.getAttribute('src') !== t.icon) {
@@ -177,6 +187,9 @@
       t.pet = spec.pet;
       t.gainedTotal = (t.gainedTotal || 0) + ((spec.pet && spec.pet.gained) || 0);
       if (spec.icon) t.icon = spec.icon;
+      if (spec.style) t.style = spec.style;
+      dress(t);
+      if (!silent && styles.soundOn(t.styleNow, false)) chime(`pet:${Date.now()}`);
       t.hideTotal = Number(spec.hideMs) > 0 ? Number(spec.hideMs) : t.hideTotal;
       t.hideLeft = t.hideTotal;
       paintPet(t, true);
@@ -223,8 +236,9 @@
           if (!more.hidden) more.textContent = `+${toasts.length - 2} more`;
           return;
         }
-        el.querySelector('.t-title').textContent = fill(t.title, t, now);
-        const msg = fill(t.message, t, now);
+        const text = eventText(t, now);
+        el.querySelector('.t-title').textContent = text.title;
+        const msg = text.message;
         el.querySelector('.t-msg').textContent = msg ? (compact ? ` ${msg}` : ` — ${msg}`) : '';
         el.querySelector('.t-chip').textContent = chip(t, now);
         const bar = el.querySelector('.t-bar');
@@ -264,7 +278,11 @@
         t.prevNeeded = null;
       }
       t.el = build(t);
-      if (t.kind === 'pet') paintPet(t, false);
+      dress(t);
+      if (t.kind === 'pet') {
+        paintPet(t, false);
+        if (!silent && styles.soundOn(t.styleNow, false)) chime(`pet:${now}`);
+      }
       const res = queue.add(toasts, t, now);
       toasts = res.list;
       if (res.replaced) res.replaced.el.replaceWith(t.el);
@@ -274,7 +292,7 @@
     }
 
     let last = Date.now();
-    setInterval(() => {
+    const timer = setInterval(() => {
       const now = Date.now();
       const step = now - last;
       last = now;
@@ -285,6 +303,17 @@
 
     return {
       show,
+      /** Take away the toast with `key` at once (another toast window shows it now). */
+      drop(key) {
+        const t = toasts.find((o) => o.key === key);
+        if (t) dismiss(t);
+      },
+      /** Clear the toasts and stop (the Config preview, when it redraws). */
+      destroy() {
+        clearInterval(timer);
+        toasts = [];
+        host.remove();
+      },
       setPosition(position) {
         host.classList.toggle('top', position !== 'bottom');
         host.classList.toggle('bottom', position === 'bottom');
@@ -318,18 +347,31 @@
     const key = `${alert.id}@${eventAt}`;
     const message = alert.message || '';
     const stay = durationOf(alert);
-    if (stage === 'live') return { key, kind: 'live', title: `${alert.name} is live now`, message, eventAt, ...stay };
+    const names = { event: alert.name, note: message };
+    if (stage === 'live') return { key, kind: 'live', title: `${alert.name} is live now`, message, eventAt, ...names, ...stay };
     if (stage === 'imminent') {
-      return { key, kind: 'imminent', title: 'Starting in {left}', message: message ? `Get ready — ${alert.name}: ${message}` : `Get ready — ${alert.name}`, eventAt, ...stay };
+      return { key, kind: 'imminent', title: 'Starting in {left}', message: message ? `Get ready — ${alert.name}: ${message}` : `Get ready — ${alert.name}`, eventAt, ...names, ...stay };
     }
-    return { key, kind: 'upcoming', title: alert.name, message: message || 'starts in {left}', eventAt, snooze: true, ...stay };
+    return { key, kind: 'upcoming', title: alert.name, message: message || 'starts in {left}', eventAt, snooze: true, ...names, ...stay };
   }
 
   /** Sample toasts for the Preview button. The names are placeholders. */
   function preview(host) {
     const now = Date.now();
-    host.show({ key: 'preview-upcoming', kind: 'upcoming', title: 'World Boss', message: 'Sample alert, spawns in {left}', eventAt: now + 5 * MINUTE, snooze: true });
-    setTimeout(() => host.show({ key: 'preview-imminent', kind: 'imminent', title: 'Starting in {left}', message: 'Get ready — Sample event', eventAt: Date.now() + IMMINENT_MS }), 1200);
+    host.show(sample('upcoming', now));
+    setTimeout(() => host.show(sample('imminent', Date.now())), 1200);
+  }
+
+  /** A sample toast of `kind` (Config preview and Send test toast). The names are placeholders. */
+  function sample(kind, now = Date.now(), extra = {}) {
+    if (kind === 'pet') {
+      return { key: 'pet:test', kind: 'pet', hideMs: 60000, ...extra,
+        pet: { id: 0, name: 'Sample pet', family: 'Fera', level: 0, max_level: 5, souls: 3, needed: 5, gained: 1, stepped: false } };
+    }
+    const base = { event: 'World Boss', note: 'Sample alert', ...extra };
+    if (kind === 'live') return { key: 'preview-live', kind, title: 'World Boss is live now', message: 'Sample alert', eventAt: now, ...base };
+    if (kind === 'imminent') return { key: 'preview-imminent', kind, title: 'Starting in {left}', message: 'Get ready — World Boss: Sample alert', eventAt: now + IMMINENT_MS, ...base };
+    return { key: 'preview-upcoming', kind: 'upcoming', title: 'World Boss', message: 'Sample alert, spawns in {left}', eventAt: now + 5 * MINUTE, snooze: true, ...base };
   }
 
   /**
@@ -349,15 +391,17 @@
     }
 
     function fire(spec) {
+      const style = styles.styleFor(spec);
+      if (!style.enabled) return;
       host.show(spec);
-      if (settings && settings.sound) chime(`${spec.key}:${spec.kind}`);
+      if (styles.soundOn(style, settings && settings.sound)) chime(`${spec.key}:${spec.kind}`);
     }
 
     host.onSnooze = (t) => {
       const at = Date.now() + SNOOZE_MS;
       if (t.eventAt == null || t.eventAt - at <= IMMINENT_MS) return;
-      const { key, kind, title, message, eventAt, snooze, hideMs, sticky } = t;
-      setTimeout(() => host.show({ key, kind, title, message, eventAt, snooze, hideMs, sticky }), SNOOZE_MS);
+      const { key, kind, title, message, event, note, eventAt, snooze, hideMs, sticky } = t;
+      setTimeout(() => host.show({ key, kind, title, message, event, note, eventAt, snooze, hideMs, sticky }), SNOOZE_MS);
     };
 
     setInterval(() => {
@@ -374,10 +418,11 @@
       reload,
       preview: () => {
         preview(host);
-        if (settings && settings.sound) chime(`preview:${Date.now()}`);
+        if (styles.soundOn(styles.styleFor({ kind: 'upcoming' }), settings && settings.sound)) chime(`preview:${Date.now()}`);
       },
+      sound: () => Boolean(settings && settings.sound),
     };
   }
 
-  window.notify = { createHost, screenHost, hostFor, startAlerts, toastFor, durationOf, HIDE_MS, SNOOZE_MS };
+  window.notify = { createHost, screenHost, hostFor, startAlerts, toastFor, durationOf, sample, HIDE_MS, SNOOZE_MS };
 })();

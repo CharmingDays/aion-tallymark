@@ -37,5 +37,6 @@ pub mod hidden_cubes;
 pub mod cube_discovery;
 pub mod position_debug;
 pub mod pets;
+pub mod toast_style;
 
 pub mod boss_popup;

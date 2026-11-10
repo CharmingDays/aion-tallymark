@@ -2,14 +2,19 @@
 // draws the sidebar, cards, rows, search, modified dots and Undo from it.
 // Adding an option = a field in StoredSettings / SettingsBody (Rust) plus one
 // entry below. Pure: no DOM, so tests/js/config-schema.test.js can load it.
+// Toasts & pop-ups rows are made per toast kind from toast-style.js
+// (`store: 'toast'`, id `toast.<kind>.<field>`); Config shows one kind at a time.
 (function (root) {
   'use strict';
+
+  const styles = root.toastStyle || (typeof require === 'function' ? require('./toast-style.js') : null);
 
   const SECTIONS = [
     { id: 'general', label: 'General', blurb: 'App start-up, tray behaviour and how you appear in the meter.' },
     { id: 'overlay', label: 'Overlay', blurb: 'The compact always-on-top window.' },
     { id: 'meter', label: 'Meter', blurb: 'When a fight resets and how bosses hold the view.' },
     { id: 'alerts', label: 'Alerts & Notifications', blurb: 'Event alert toasts, sound and position, plus the pet progress toast.' },
+    { id: 'toasts', label: 'Toasts & pop-ups', blurb: 'How each pop-up looks and where it shows. Pick a type, then change its size, place, text and colours.' },
     { id: 'exploration', label: 'Exploration', blurb: 'Passive alerts for things found while exploring.' },
     { id: 'pets', label: 'Pets', blurb: 'Pet soul progress. These settings are also listed under Alerts & Notifications.' },
     { id: 'achievements', label: 'Achievements', blurb: 'Nothing to set yet.', soon: true },
@@ -83,22 +88,85 @@
       options: OFFSETS.map((m) => [m, offsetLabel(m)]),
       label: 'Game server clock', desc: 'For (server) events. Unconfirmed for Global servers: check an in-game time.',
       keywords: ['server', 'clock', 'utc', 'timezone', 'offset'] },
-    { id: 'pet_toasts', section: 'alerts', card: 'Pet progress toast', type: 'toggle', default: true, appOnly: true, alsoIn: ['pets'],
+    { id: 'pet_toasts', section: 'alerts', card: 'Pet progress toast', type: 'toggle', default: true, appOnly: true, alsoIn: ['pets', 'toasts'], toastOnly: ['pet'],
       label: 'Pet progress toast', desc: 'Show a toast when a pet soul is collected. Further drops update it in place.',
       keywords: ['pet', 'soul', 'notification', 'toast'] },
     { id: 'pet_toast_secs', section: 'alerts', card: 'Pet progress toast', type: 'stepper', default: 60, min: 10, max: 300, step: 5, unit: 's',
-      appOnly: true, alsoIn: ['pets'], dependsOn: 'pet_toasts',
+      appOnly: true, alsoIn: ['pets', 'toasts'], toastOnly: ['pet'], dependsOn: 'pet_toasts',
       label: 'Toast duration', desc: 'How long the toast stays after your last soul for that pet (10\u2013300 s).',
       keywords: ['pet', 'soul', 'timer', 'notification', 'toast', 'duration'] },
 
-    { id: 'hidden_cube_alerts', section: 'exploration', card: 'Hidden cubes', type: 'toggle', default: true,
+    { id: 'hidden_cube_alerts', section: 'exploration', card: 'Hidden cubes', type: 'toggle', default: true, alsoIn: ['toasts'], toastOnly: ['cube'],
       label: 'Hidden cube alerts', desc: 'Only confirmed cube types alert. Unknown distance is hidden.',
       keywords: ['cube', 'treasure', 'explore', 'hidden'] },
 
     debugLog('debug_pets', 'pets', 'Pets', 'pet-debug.jsonl'),
     debugLog('debug_position', 'position', 'Position', 'position-debug.jsonl'),
     debugLog('debug_cubes', 'cubes', 'Cubes', 'cube-discovery.jsonl'),
+    ...toastDefs(),
   ];
+
+  /** Rows for one toast kind's style, in the order Config shows them. */
+  function toastRows(k) {
+    const L = styles.LIMITS;
+    const def = styles.defaults(k.id);
+    const on = k.event ? `toast.${k.id}.enabled` : k.id === 'pet' ? 'pet_toasts' : 'hidden_cube_alerts';
+    const places = styles.POSITIONS.map(([v, label]) => [v, v === 'auto' ? (k.id === 'cube' ? 'Top center (default)' : label) : label]);
+    const fields = k.fields.map((f) => `{${f}}`).join(' ');
+    const rows = [];
+    if (k.event) {
+      rows.push({ key: 'enabled', card: 'Show', type: 'toggle', label: 'Show this pop-up', desc: `${k.help} Off skips this stage for every event.`, keywords: ['on', 'off', 'hide', 'disable'] });
+      rows.push({ key: 'events', card: 'Show', type: 'action', action: 'events', button: 'Manage events',
+        label: 'How long it stays', desc: 'Each event sets its own toast duration (8 s by default, or until dismissed).',
+        keywords: ['duration', 'time', 'seconds', 'event'] });
+    }
+    rows.push({ key: 'sound', card: 'Show', type: 'segmented',
+      options: k.event ? [['default', 'Like Event alerts'], ['on', 'Always'], ['off', 'Never']] : [['default', 'Off'], ['on', 'Chime']],
+      label: 'Sound', desc: k.event ? 'Follow Event alerts › Sound, or always or never chime for this type.' : 'Play a short chime when it shows.',
+      keywords: ['chime', 'audio', 'beep'] });
+    rows.push(
+      { key: 'scale', card: 'Size & place', type: 'slider', min: L.scale[0], max: L.scale[1], step: 10, unit: '%',
+        label: 'Size', desc: 'Scale the whole pop-up (70–150%).', keywords: ['scale', 'zoom', 'big', 'small'] },
+      { key: 'position', card: 'Size & place', type: 'select', options: places, appOnly: true,
+        label: 'Screen location', desc: k.id === 'cube' ? 'Where on the monitor it shows.' : 'Where on the monitor it shows. Auto follows Event alerts › Position.',
+        keywords: ['position', 'place', 'corner', 'top', 'bottom', 'left', 'right', 'center'] },
+      { key: 'monitor', card: 'Size & place', type: 'select', appOnly: true,
+        options: [[0, 'Primary'], ...Array.from({ length: L.monitor }, (_, i) => [i + 1, `Monitor ${i + 1}`])],
+        label: 'Monitor', desc: 'Which screen. A monitor that is not connected falls back to the primary one.', keywords: ['screen', 'display', 'monitor'] },
+      { key: 'offset_x', card: 'Size & place', type: 'stepper', min: -L.offset, max: L.offset, step: 10, unit: 'px', appOnly: true, advanced: true,
+        label: 'Nudge sideways', desc: 'Move it right (+) or left (−) from its spot; it stays on the monitor.', keywords: ['offset', 'x', 'horizontal', 'move'] },
+      { key: 'offset_y', card: 'Size & place', type: 'stepper', min: -L.offset, max: L.offset, step: 10, unit: 'px', appOnly: true, advanced: true,
+        label: 'Nudge up or down', desc: 'Move it down (+) or up (−) from its spot; it stays on the monitor.', keywords: ['offset', 'y', 'vertical', 'move'] },
+      { key: 'title', card: 'Text', type: 'text', max: L.title, placeholder: k.title,
+        label: 'Title', desc: `Blank keeps the built-in text. Placeholders: ${fields}.`, keywords: ['template', 'wording', 'name', 'heading'] },
+      { key: 'message', card: 'Text', type: 'text', max: L.message, placeholder: k.message,
+        label: 'Message', desc: `Blank keeps the built-in text. Placeholders: ${fields}.`, keywords: ['template', 'wording', 'line', 'body'] },
+      { key: 'font_px', card: 'Text', type: 'stepper', min: L.font[0], max: L.font[1], step: 1, unit: 'px',
+        label: 'Text size', desc: `Size of the main line (${def.font_px} px by default).`, keywords: ['font', 'size', 'text', 'big'] },
+      { key: 'accent', card: 'Colors', type: 'tcolor', fallback: k.id === 'live' ? '#4ade80' : k.id === 'imminent' ? '#fbbf24' : k.id === 'cube' ? '#22d3ee' : '#5b9dff',
+        label: 'Accent colour', desc: k.id === 'pet' ? 'Edge, icon and bar. Default uses the pet family colour.' : 'Edge, icon and countdown bar.', keywords: ['color', 'colour', 'tone', 'border', 'edge'] },
+      { key: 'background', card: 'Colors', type: 'tcolor', fallback: k.id === 'cube' ? '#101d25' : '#161a21', dark: true,
+        label: 'Background colour', desc: 'The pop-up’s fill.', keywords: ['color', 'colour', 'fill', 'panel'] },
+      { key: 'text', card: 'Colors', type: 'tcolor', fallback: '#e6e9ef', light: true,
+        label: 'Text colour', desc: 'Main text; the second line is a little dimmer.', keywords: ['color', 'colour', 'font'] },
+      { key: 'bg_opacity', card: 'Colors', type: 'slider', min: L.opacity[0], max: 100, step: 5, unit: '%',
+        label: 'Background opacity', desc: 'See the game through the pop-up (20–100%).', keywords: ['transparency', 'alpha', 'see-through'] },
+      { key: 'show_icon', card: 'Colors', type: 'toggle',
+        label: 'Show icon', desc: k.id === 'pet' ? 'The pet portrait.' : k.id === 'cube' ? 'The cube symbol.' : 'The coloured dot.', keywords: ['icon', 'image', 'dot', 'portrait'] },
+    );
+    return rows.map((r) => ({
+      ...r, id: `toast.${k.id}.${r.key}`, fullLabel: `${k.label} \u203a ${r.label}`, section: 'toasts', store: r.type === 'action' ? undefined : 'toast', toastKind: k.id, group: `${k.id}:${r.card}`,
+      default: r.type === 'action' ? undefined : def[r.key], dependsOn: r.key === 'enabled' ? undefined : on,
+      keywords: [...(r.keywords || []), 'toast', 'pop-up', 'notification', k.short.toLowerCase()],
+    }));
+  }
+
+  function toastDefs() {
+    return styles ? styles.KINDS.flatMap(toastRows) : [];
+  }
+
+  /** The Toasts & pop-ups rows for one kind (its style and the settings mirrored there). */
+  const forToastKind = (list, kind) => list.filter((d) => (d.toastKind ? d.toastKind === kind : !d.toastOnly || d.toastOnly.includes(kind)));
 
   const byId = (id) => SETTINGS.find((d) => d.id === id) || null;
   const editable = (d) => d.type !== 'action';
@@ -114,8 +182,9 @@
     const out = [];
     for (const d of defs) {
       const home = section && d.section !== section ? section : d.section;
-      let c = out.find((x) => x.card === d.card && x.section === d.section);
-      if (!c) out.push(c = { card: d.card, section: d.section, home, defs: [] });
+      const group = d.group || d.card;
+      let c = out.find((x) => x.group === group && x.section === d.section);
+      if (!c) out.push(c = { card: d.card, group, section: d.section, home, toastKind: d.toastKind, defs: [] });
       c.defs.push(d);
     }
     return out;
@@ -152,8 +221,18 @@
     if (d.type === 'stepper' || d.type === 'slider') {
       const t = String(raw).trim();
       const n = Number(t);
-      if (!/^\d+$/.test(t) || n < d.min || n > d.max) return { ok: false, error: `${d.label}: use ${d.min} to ${d.max}${d.unit ? ` ${d.unit}` : ''}.` };
+      if (!/^-?\d+$/.test(t) || n < d.min || n > d.max) return { ok: false, error: `${d.label}: use ${d.min} to ${d.max}${d.unit ? ` ${d.unit}` : ''}.` };
       return { ok: true, value: n };
+    }
+    if (d.type === 'text') {
+      const t = String(raw ?? '').trim();
+      if (t.length > d.max || /[\u0000-\u001f]/.test(t)) return { ok: false, error: `${d.label}: up to ${d.max} characters on one line.` };
+      return { ok: true, value: t };
+    }
+    if (d.type === 'tcolor') {
+      const t = String(raw ?? '').trim().toLowerCase();
+      if (t && !/^#[0-9a-f]{6}$/.test(t)) return { ok: false, error: `${d.label}: pick a colour or Default.` };
+      return { ok: true, value: t };
     }
     return { ok: true, value: raw };
   }
@@ -169,6 +248,8 @@
       case 'stepper': case 'slider': return d.unit === '%' ? `${v}%` : `${v} ${d.unit || ''}`.trim();
       case 'damage': return formatDamage ? formatDamage(v) : String(v);
       case 'multi': return v.length ? `${[...v].sort((a, b) => a - b).join(', ')} min` : 'none';
+      case 'text': return v ? `\u201c${v}\u201d` : 'built-in text';
+      case 'tcolor': return v || 'Default';
       case 'segmented': case 'select': { const o = (d.options || []).find(([x]) => same(x, v)); return o ? o[1] : String(v); }
       default: return String(v);
     }
@@ -178,8 +259,9 @@
   function changeText(changes, formatDamage) {
     if (changes.length !== 1) return `${changes.length} settings changed.`;
     const { def, before, after } = changes[0];
-    if (def.type === 'toggle') return `${def.label} turned ${after ? 'on' : 'off'}.`;
-    return `${def.label} changed ${describe(def, before, formatDamage)} \u2192 ${describe(def, after, formatDamage)}.`;
+    const label = def.fullLabel || def.label;
+    if (def.type === 'toggle') return `${label} turned ${after ? 'on' : 'off'}.`;
+    return `${label} changed ${describe(def, before, formatDamage)} \u2192 ${describe(def, after, formatDamage)}.`;
   }
 
   /** Undo: a stack of change groups, each [{ id, before, after }]. */
@@ -193,7 +275,7 @@
     };
   }
 
-  const api = { SECTIONS, SETTINGS, OFFSETS, offsetLabel, byId, editable, visible, inSection, cards, same, isModified, match, search, parse, stepValue, describe, changeText, createHistory };
+  const api = { SECTIONS, SETTINGS, OFFSETS, offsetLabel, byId, editable, visible, inSection, forToastKind, cards, same, isModified, match, search, parse, stepValue, describe, changeText, createHistory };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.configSchema = api;
 })(typeof window !== 'undefined' ? window : globalThis);

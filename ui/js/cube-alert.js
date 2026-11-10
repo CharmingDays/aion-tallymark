@@ -30,9 +30,15 @@
     if (a.status === 'gone') return { title: 'Cube no longer nearby', subline: `${type} \u00b7 Out of range` };
     return { title: 'Hidden Cube nearby', subline: `${type}${distanceText(a)}` };
   }
-  function create(element, timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) }) {
+  /**
+   * `opts.label(label, alert)` may rewrite the title and subline (Config >
+   * Toasts & pop-ups templates); `opts.onShow(alert, fresh)` runs on each update
+   * with an alert up, `fresh` when it is a new one.
+   */
+  function create(element, timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) }, opts = {}) {
     const dismissed = new Set();
     let shown = null;
+    let lastKey = null;
     let expiry = null;
     element.querySelector('button').addEventListener('click', (event) => {
       event.stopPropagation();
@@ -52,7 +58,9 @@
           if (shown && key(shown) === currentKey) element.hidden = true;
         }, Math.max(0, TTL[shown.status] - (now - shown.ts_ms)));
         if (expiry && expiry.unref) expiry.unref(); // Node tests must not keep a timer alive.
-        const label = text(shown);
+        const label = opts.label ? opts.label(text(shown), shown) : text(shown);
+        if (opts.onShow) opts.onShow(shown, currentKey !== lastKey);
+        lastKey = currentKey;
         element.classList.toggle('gone', shown.status === 'gone');
         element.classList.toggle('opened', shown.status === 'opened');
         element.querySelector('[data-cube-title]').textContent = label.title;

@@ -40,13 +40,39 @@ test('app-only settings are left out in a browser', () => {
   assert.ok(ids.includes('reset_after_secs'));
 });
 
-test('search "toast" finds five settings, two of them mirrored in Pets', () => {
-  const res = s.search(s.visible(true), 'toast');
-  assert.equal(res.total, 5);
+test('search "toast" finds the alert rows, the Pets mirrors and every toast style row', () => {
+  const defs = s.visible(true);
+  const res = s.search(defs, 'toast');
+  const styled = defs.filter((d) => d.section === 'toasts').length;
   assert.equal(res.counts.alerts, 5);
   assert.equal(res.counts.pets, 2);
   assert.equal(res.counts.general, 0);
+  assert.equal(res.counts.toasts, styled + 2);
   assert.equal(s.match(s.byId('alert_sound'), 'toast'), 'desc');
+});
+
+test('Toasts & pop-ups: one set of rows per type, with checked limits', () => {
+  const defs = s.inSection(s.visible(true), 'toasts');
+  for (const kind of ['upcoming', 'imminent', 'live', 'pet', 'cube']) {
+    const rows = s.forToastKind(defs, kind);
+    for (const key of ['sound', 'scale', 'position', 'monitor', 'offset_x', 'offset_y', 'title', 'message', 'font_px', 'accent', 'background', 'text', 'bg_opacity', 'show_icon']) {
+      assert.ok(rows.some((d) => d.id === `toast.${kind}.${key}`), `${kind}.${key}`);
+    }
+    assert.ok(rows.every((d) => !d.toastKind || d.toastKind === kind), kind);
+  }
+  assert.ok(s.forToastKind(defs, 'pet').some((d) => d.id === 'pet_toast_secs'));
+  assert.ok(!s.forToastKind(defs, 'live').some((d) => d.id === 'pet_toast_secs'));
+  assert.ok(s.forToastKind(defs, 'cube').some((d) => d.id === 'hidden_cube_alerts'));
+  const off = s.byId('toast.live.offset_x');
+  assert.deepEqual(s.parse(off, '-40'), { ok: true, value: -40 });
+  assert.equal(s.parse(off, '-1010').ok, false);
+  assert.equal(s.parse(s.byId('toast.pet.scale'), '160').ok, false);
+  assert.equal(s.parse(s.byId('toast.pet.title'), 'x'.repeat(81)).ok, false);
+  assert.deepEqual(s.parse(s.byId('toast.pet.accent'), ''), { ok: true, value: '' });
+  assert.equal(s.parse(s.byId('toast.pet.accent'), 'red').ok, false);
+  assert.equal(s.changeText([{ def: s.byId('toast.pet.scale'), before: 100, after: 120 }]), 'Pet progress \u203a Size changed 100% \u2192 120%.');
+  const cards = s.cards(s.forToastKind(defs, 'upcoming'), 'toasts').map((c) => c.card);
+  assert.deepEqual(cards, ['Show', 'Size & place', 'Text', 'Colors']);
 });
 
 test('modified compares with the default, lists in any order', () => {

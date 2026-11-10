@@ -55,6 +55,7 @@ static FILES: &[(&str, &str, &[u8])] = &[
     ("/js/player-colors.js", JS, include_bytes!("../ui/js/player-colors.js")),
     ("/js/alerts-schedule.js", JS, include_bytes!("../ui/js/alerts-schedule.js")),
     ("/js/notify.js", JS, include_bytes!("../ui/js/notify.js")),
+    ("/js/toast-style.js", JS, include_bytes!("../ui/js/toast-style.js")),
     ("/js/alerts-panel.js", JS, include_bytes!("../ui/js/alerts-panel.js")),
     ("/js/config-schema.js", JS, include_bytes!("../ui/js/config-schema.js")),
     ("/js/config-panel.js", JS, include_bytes!("../ui/js/config-panel.js")),
@@ -91,6 +92,7 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> std::io::Result<u16> {
         .route("/api/reset", post(reset))
         .route("/api/mode", post(mode))
         .route("/api/settings", post(settings))
+        .route("/api/toast-style", post(toast_style))
         .route("/api/unlock", post(unlock))
         .route("/api/history/clear", post(clear_history))
         .route("/api/monster-names", get(monster_names))
@@ -213,6 +215,23 @@ async fn settings(
         state.set_debug_logs(body.debug_pets, body.debug_position, body.debug_cubes);
     }
     StatusCode::NO_CONTENT
+}
+
+#[derive(Deserialize)]
+struct ToastStyleBody {
+    kind: String,
+    patch: serde_json::Value,
+}
+
+/// Config > Toasts & pop-ups: any of one kind's fields, all checked first.
+async fn toast_style(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ToastStyleBody>,
+) -> (StatusCode, String) {
+    match state.set_toast_style(&body.kind, &body.patch) {
+        Ok(()) => (StatusCode::NO_CONTENT, String::new()),
+        Err(err) => (StatusCode::BAD_REQUEST, err),
+    }
 }
 
 async fn unlock(State(state): State<Arc<AppState>>) -> StatusCode {

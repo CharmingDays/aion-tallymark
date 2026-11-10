@@ -124,6 +124,7 @@
 
   function render(data) {
     latest = data;
+    window.toastStyle.remember(data.toast_styles);
     if (data.settings && typeof data.settings.overlay_click_through === 'boolean') {
       clickThrough = data.settings.overlay_click_through;
       if (!clickThrough) applyCapture(true);

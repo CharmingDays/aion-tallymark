@@ -7,9 +7,10 @@
 //! shows the overlay again when `AION2.exe` starts.
 //!
 //! Event alerts fire in the meter and overlay pages and are shown in a small
-//! toast window at the top center of the primary monitor, over the game. It is
-//! opened when a toast arrives, lets clicks through except on a toast, never
-//! takes focus, and closes when its last toast is gone.
+//! toast window over the game: the top center of the primary monitor unless
+//! Config > Toasts & pop-ups puts that kind elsewhere (one window per place).
+//! It is opened when a toast arrives, lets clicks through except on a toast,
+//! never takes focus, and closes when its last toast is gone.
 //!
 //! With overlay click-through on (default), the compact overlay body also lets
 //! clicks through to the game; the top bar and a thin resize edge stay live.
@@ -37,6 +38,7 @@ use aion2dps::monster_names::{self, MonsterName};
 use aion2dps::sessions::{self, Session, Summary};
 use aion2dps::state::{AppState, Live};
 use aion2dps::target_debug::{self, DebugInfo, TargetDebug};
+use aion2dps::toast_style::{self, ToastStyle};
 use aion2dps::window_state::{self, Rect};
 use aion2dps::{capture, web};
 use tauri::{
@@ -53,6 +55,8 @@ const SESSIONS_CHANGED: &str = "sessions";
 const ALERTS_CHANGED: &str = "alerts";
 /// Tells the toast window that toasts are waiting in `take_toasts`.
 const TOAST_WAKE: &str = "toast-wake";
+/// Tells toast windows to drop a toast that moved to another window (`keep`).
+const TOAST_DROP: &str = "toast-drop";
 /// The toast window: logical width and distance from the screen edge.
 const TOAST_WIDTH: f64 = 520.0;
 const TOAST_MARGIN: f64 = 36.0;
@@ -288,35 +292,95 @@ async fn rename_session(
     Ok(summary)
 }
 
-/// Toasts on their way to the screen toast window.
+/// Toasts on their way to the screen toast windows. Toasts that go to the
+/// same place (monitor, screen position, offset; Config > Toasts & pop-ups)
+/// share one window, a "lane"; another place gets its own window.
 #[derive(Default)]
 struct Toasts {
-    pending: Mutex<Vec<serde_json::Value>>,
-    /// Label of the open toast window. Each window gets a new label, so one
-    /// still closing never blocks the next.
-    window: Mutex<Option<String>>,
+    lanes: Mutex<HashMap<String, Lane>>,
     seq: AtomicU32,
     recent: Mutex<HashMap<String, Instant>>,
 }
 
+#[derive(Default)]
+struct Lane {
+    pending: Vec<serde_json::Value>,
+    /// Label of the open window. Each window gets a new label, so one still
+    /// closing never blocks the next.
+    window: Option<String>,
+    /// Where the lane's toasts go, from the newest toast's style.
+    style: Option<ToastStyle>,
+    /// The window's logical size, as the page last measured it.
+    size: (f64, f64),
+}
+
 impl Toasts {
-    fn current(&self, app: &AppHandle) -> Option<WebviewWindow> {
-        let label = self.window.lock().unwrap().clone()?;
-        app.get_webview_window(&label)
+    fn lane_of<'a>(lanes: &'a mut HashMap<String, Lane>, label: &str) -> Option<&'a mut Lane> {
+        lanes.values_mut().find(|lane| lane.window.as_deref() == Some(label))
     }
 }
 
-/// Queue a toast and open the toast window, or wake it.
-fn deliver(app: &AppHandle, toasts: &Toasts, toast: serde_json::Value) -> tauri::Result<()> {
-    toasts.pending.lock().unwrap().push(toast);
-    if let Some(window) = toasts.current(app) {
-        return window.emit(TOAST_WAKE, ());
+/// `top` or `bottom`: what a toast's `auto` position follows.
+fn alerts_place(app: &AppHandle) -> &'static str {
+    if app.state::<Arc<AppState>>().alerts().position == Position::Bottom { "bottom" } else { "top" }
+}
+
+/// Logical origin and size of monitor `n` (0 = primary, 1.. = nth listed).
+fn monitor_rect(app: &AppHandle, n: u32) -> Option<((f64, f64), (f64, f64))> {
+    let nth = if n > 0 { app.available_monitors().ok().and_then(|m| m.into_iter().nth(n as usize - 1)) } else { None };
+    let monitor = match nth {
+        Some(m) => m,
+        None => app.primary_monitor().ok()??,
+    };
+    let scale = monitor.scale_factor();
+    let pos = monitor.position().to_logical::<f64>(scale);
+    let size = monitor.size().to_logical::<f64>(scale);
+    Some(((pos.x, pos.y), (size.width, size.height)))
+}
+
+/// Top-left corner, in logical pixels, for a window of `size` in `style`'s place.
+fn styled_origin(app: &AppHandle, style: &ToastStyle, fallback: &str, size: (f64, f64), margin: f64) -> (f64, f64) {
+    let Some((origin, screen)) = monitor_rect(app, style.monitor) else {
+        return (0.0, margin);
+    };
+    toast_style::place(style, fallback, origin, screen, size, margin)
+}
+
+/// Queue a toast for its lane and open that lane's window, or wake it.
+fn deliver(app: &AppHandle, toasts: &Toasts, mut toast: serde_json::Value) -> tauri::Result<()> {
+    let kind = toast["kind"].as_str().unwrap_or("upcoming").to_string();
+    let style = app.state::<Arc<AppState>>().toast_style(&kind);
+    let fallback = alerts_place(app);
+    let place = toast_style::resolved_position(&style, fallback).to_string();
+    let lane_key = format!("{}|{}|{}|{}", style.monitor, place, style.offset_x, style.offset_y);
+    toast["style"] = serde_json::to_value(&style).unwrap_or_default();
+    toast["place"] = place.into();
+    let key = toast["key"].clone();
+    let width = TOAST_WIDTH * f64::from(style.scale) / 100.0;
+    let (open, label) = {
+        let mut lanes = toasts.lanes.lock().unwrap();
+        let lane = lanes.entry(lane_key).or_default();
+        lane.pending.push(toast);
+        lane.style = Some(style.clone());
+        if lane.window.as_ref().is_some_and(|label| app.get_webview_window(label).is_some()) {
+            (true, lane.window.clone().unwrap_or_default())
+        } else {
+            let label = format!("toast-{}", toasts.seq.fetch_add(1, Ordering::Relaxed));
+            lane.window = Some(label.clone());
+            lane.size = (width, 80.0);
+            (false, label)
+        }
+    };
+    // The same toast in another lane (an upcoming alert that turns imminent
+    // somewhere else) leaves that one.
+    let _ = app.emit(TOAST_DROP, serde_json::json!({ "key": key, "keep": label }));
+    if open {
+        return app.emit(TOAST_WAKE, ());
     }
-    let label = format!("toast-{}", toasts.seq.fetch_add(1, Ordering::Relaxed));
-    let (x, y) = toast_origin(app, 80.0);
+    let (x, y) = styled_origin(app, &style, fallback, (width, 80.0), TOAST_MARGIN);
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("toast.html".into()))
         .title("aion2dps alert")
-        .inner_size(TOAST_WIDTH, 80.0)
+        .inner_size(width, 80.0)
         .position(x, y)
         .decorations(false)
         .transparent(true)
@@ -328,23 +392,7 @@ fn deliver(app: &AppHandle, toasts: &Toasts, toast: serde_json::Value) -> tauri:
         .focused(false)
         .build()?;
     let _ = window.set_ignore_cursor_events(true);
-    *toasts.window.lock().unwrap() = Some(label);
     Ok(())
-}
-
-/// Top-left corner, in logical pixels, for a toast window `height` tall:
-/// centered on the primary monitor, at the top or bottom per the settings.
-fn toast_origin(app: &AppHandle, height: f64) -> (f64, f64) {
-    let Ok(Some(monitor)) = app.primary_monitor() else {
-        return (0.0, TOAST_MARGIN);
-    };
-    let scale = monitor.scale_factor();
-    let pos = monitor.position().to_logical::<f64>(scale);
-    let size = monitor.size().to_logical::<f64>(scale);
-    let x = pos.x + ((size.width - TOAST_WIDTH) / 2.0).max(0.0);
-    let bottom = app.state::<Arc<AppState>>().alerts().position == Position::Bottom;
-    let y = if bottom { pos.y + size.height - height - TOAST_MARGIN - 40.0 } else { pos.y + TOAST_MARGIN };
-    (x, y)
 }
 
 /// Async so the toast window is not built on the IPC thread.
@@ -410,16 +458,24 @@ fn snooze_toast(app: AppHandle, toast: serde_json::Value, ms: u64) {
 }
 
 #[tauri::command]
-fn take_toasts(toasts: State<'_, Toasts>) -> Vec<serde_json::Value> {
-    std::mem::take(&mut *toasts.pending.lock().unwrap())
+fn take_toasts(window: WebviewWindow, toasts: State<'_, Toasts>) -> Vec<serde_json::Value> {
+    let mut lanes = toasts.lanes.lock().unwrap();
+    Toasts::lane_of(&mut lanes, window.label()).map(|lane| std::mem::take(&mut lane.pending)).unwrap_or_default()
 }
 
-/// Fit the toast window to its toasts and keep it centered.
+/// Fit the toast window to its toasts and keep it in its place.
 #[tauri::command]
-fn toast_layout(app: AppHandle, window: WebviewWindow, height: f64) {
-    let height = height.clamp(20.0, 400.0);
-    let (x, y) = toast_origin(&app, height);
-    let _ = window.set_size(LogicalSize::new(TOAST_WIDTH, height));
+fn toast_layout(app: AppHandle, window: WebviewWindow, toasts: State<'_, Toasts>, height: f64, width: Option<f64>) {
+    let height = height.clamp(20.0, 900.0);
+    let (style, size) = {
+        let mut lanes = toasts.lanes.lock().unwrap();
+        let Some(lane) = Toasts::lane_of(&mut lanes, window.label()) else { return };
+        let width = width.unwrap_or(lane.size.0).clamp(120.0, 1600.0);
+        lane.size = (width, height);
+        (lane.style.clone().unwrap_or_else(|| ToastStyle::default_for("upcoming")), lane.size)
+    };
+    let (x, y) = styled_origin(&app, &style, alerts_place(&app), size, TOAST_MARGIN);
+    let _ = window.set_size(LogicalSize::new(size.0, size.1));
     let _ = window.set_position(LogicalPosition::new(x, y));
 }
 
@@ -441,16 +497,29 @@ fn toast_hit(window: WebviewWindow, over: bool) {
 /// The last toast is gone: close the window unless more are waiting.
 #[tauri::command]
 fn toast_done(window: WebviewWindow, toasts: State<'_, Toasts>) {
-    if !toasts.pending.lock().unwrap().is_empty() {
-        let _ = window.emit(TOAST_WAKE, ());
-        return;
+    let mut lanes = toasts.lanes.lock().unwrap();
+    if let Some(lane) = Toasts::lane_of(&mut lanes, window.label()) {
+        if !lane.pending.is_empty() {
+            let _ = window.emit(TOAST_WAKE, ());
+            return;
+        }
+        lane.window = None;
     }
-    let mut current = toasts.window.lock().unwrap();
-    if current.as_deref() == Some(window.label()) {
-        *current = None;
-    }
-    drop(current);
+    drop(lanes);
     let _ = window.close();
+}
+
+/// Config > Toasts & pop-ups. New toasts use it; the cube window moves when it next shows.
+#[tauri::command]
+fn set_toast_style(state: State<'_, Arc<AppState>>, kind: String, patch: serde_json::Value) -> Result<(), String> {
+    state.set_toast_style(&kind, &patch)
+}
+
+/// Config's "Send test toast" for the hidden cube: the cube window shows a
+/// sample alert for a few seconds. Nothing is read from or sent to the game.
+#[tauri::command]
+fn test_cube_toast(app: AppHandle) {
+    let _ = app.emit_to(CUBE, "cube-test", ());
 }
 
 #[tauri::command]
@@ -499,14 +568,17 @@ fn open_npcap_page() {
 const CUBE: &str = "cube";
 const CUBE_SIZE: (f64, f64) = (460.0, 140.0);
 
+/// The cube window's size and top-left corner, per Config > Toasts & pop-ups
+/// (`auto` is the top center).
+fn cube_place(app: &AppHandle) -> ((f64, f64), (f64, f64)) {
+    let style = app.state::<Arc<AppState>>().toast_style("cube");
+    let k = f64::from(style.scale) / 100.0;
+    let size = (CUBE_SIZE.0 * k, CUBE_SIZE.1 * k);
+    (size, styled_origin(app, &style, "top", size, 8.0))
+}
+
 fn cube_origin(app: &AppHandle) -> (f64, f64) {
-    let Ok(Some(monitor)) = app.primary_monitor() else {
-        return (0.0, TOAST_MARGIN);
-    };
-    let scale = monitor.scale_factor();
-    let pos = monitor.position().to_logical::<f64>(scale);
-    let size = monitor.size().to_logical::<f64>(scale);
-    (pos.x + ((size.width - CUBE_SIZE.0) / 2.0).max(0.0), pos.y + 8.0)
+    cube_place(app).1
 }
 
 /// Hidden top-center window for the hidden-cube alert; the page shows it.
@@ -533,7 +605,8 @@ fn build_cube_window(app: &AppHandle) -> tauri::Result<()> {
 fn cube_visible(app: AppHandle, show: bool) {
     let Some(window) = app.get_webview_window(CUBE) else { return };
     if show {
-        let (x, y) = cube_origin(&app);
+        let ((w, h), (x, y)) = cube_place(&app);
+        let _ = window.set_size(LogicalSize::new(w, h));
         let _ = window.set_position(tauri::LogicalPosition::new(x, y));
         let _ = window.show();
         let _ = window.set_always_on_top(true);
@@ -825,6 +898,8 @@ fn main() {
             set_hidden_cube_alerts,
             set_pet_toasts,
             set_debug_logs,
+            set_toast_style,
+            test_cube_toast,
             cube_visible,
             overlay_pointer,
             overlay_hit,

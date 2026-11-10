@@ -60,6 +60,8 @@ pub struct Live {
     pub cube_alerts: Vec<crate::hidden_cubes::CubeAlert>,
     /// Changes whenever the pet tracker does; the Pets tab refetches then.
     pub pets_version: u64,
+    /// Config > Toasts & pop-ups: the look and place of each kind of pop-up.
+    pub toast_styles: crate::toast_style::ToastStyles,
 }
 
 /// The opt-in local debug logs (pets, position, cubes). Each one only writes
@@ -97,6 +99,7 @@ pub struct AppState {
     debug_position: AtomicBool,
     debug_cubes: AtomicBool,
     debug_env: DebugLogs,
+    toast_styles: Mutex<crate::toast_style::ToastStyles>,
     capture: Mutex<CaptureInfo>,
     /// When on, closing the overlay keeps the app in the tray and reopens it
     /// when the AION 2 client starts. Desktop shell only; combat ignores it.
@@ -187,6 +190,7 @@ impl AppState {
             debug_position: AtomicBool::new(stored.debug_position),
             debug_cubes: AtomicBool::new(stored.debug_cubes),
             debug_env: DebugLogs::from_env(),
+            toast_styles: Mutex::new(crate::toast_style::load(&stored.toast_styles)),
             capture: Mutex::new(CaptureInfo::default()),
             open_when_aion2: AtomicBool::new(stored.open_when_aion2),
             start_with_windows: AtomicBool::new(stored.start_with_windows),
@@ -362,6 +366,7 @@ impl AppState {
             settings,
             history,
             pets_version: self.with_pets_state(|pets| pets.version()),
+            toast_styles: self.toast_styles(),
             capture: self
                 .capture
                 .lock()
@@ -521,6 +526,33 @@ impl AppState {
         }
     }
 
+    pub fn toast_styles(&self) -> crate::toast_style::ToastStyles {
+        self.toast_styles.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// The style of one kind (`upcoming`, `imminent`, `live`, `pet`, `cube`).
+    pub fn toast_style(&self, kind: &str) -> crate::toast_style::ToastStyle {
+        self.toast_styles
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(kind)
+            .cloned()
+            .unwrap_or_else(|| crate::toast_style::ToastStyle::default_for(kind))
+    }
+
+    /// Change any of one kind's fields. Nothing changes unless all of it checks out.
+    pub fn set_toast_style(&self, kind: &str, patch: &serde_json::Value) -> Result<(), String> {
+        {
+            let mut styles = self.toast_styles.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(style) = styles.get_mut(kind) else {
+                return Err(format!("unknown pop-up kind {kind}"));
+            };
+            *style = crate::toast_style::merged(style, patch)?;
+        }
+        self.store_settings();
+        Ok(())
+    }
+
     /// Any may be left out. Saved, and applied without a restart.
     pub fn set_debug_logs(&self, pets: Option<bool>, position: Option<bool>, cubes: Option<bool>) {
         if let Some(on) = pets {
@@ -552,6 +584,7 @@ impl AppState {
             debug_pets: self.debug_pets.load(Ordering::Relaxed),
             debug_position: self.debug_position.load(Ordering::Relaxed),
             debug_cubes: self.debug_cubes.load(Ordering::Relaxed),
+            toast_styles: serde_json::to_value(self.toast_styles()).unwrap_or_default(),
         });
     }
 
@@ -589,6 +622,8 @@ struct StoredSettings {
     debug_pets: bool,
     debug_position: bool,
     debug_cubes: bool,
+    /// Per kind, any subset of a toast style; see `toast_style::load`.
+    toast_styles: serde_json::Value,
 }
 
 fn clamp_toast_secs(secs: u64) -> u64 {
@@ -612,6 +647,7 @@ impl Default for StoredSettings {
             debug_pets: false,
             debug_position: false,
             debug_cubes: false,
+            toast_styles: serde_json::Value::Null,
         }
     }
 }
@@ -633,6 +669,7 @@ impl From<SettingsView> for StoredSettings {
             debug_pets: view.debug_pets,
             debug_position: view.debug_position,
             debug_cubes: view.debug_cubes,
+            toast_styles: serde_json::Value::Null,
         }
     }
 }

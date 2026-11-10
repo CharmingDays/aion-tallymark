@@ -114,6 +114,12 @@
     setHiddenCubeAlerts: (on) => (inApp
       ? tauri.core.invoke('set_hidden_cube_alerts', { on })
       : post('/api/settings', { hidden_cube_alerts: on })),
+    /** Config > Toasts & pop-ups: some of one toast kind's style fields. */
+    setToastStyle: (kind, patch) => (inApp
+      ? tauri.core.invoke('set_toast_style', { kind, patch })
+      : post('/api/toast-style', { kind, patch })),
+    /** Show a sample in the hidden cube window (app only). */
+    testCubeToast: () => (inApp ? tauri.core.invoke('test_cube_toast') : Promise.resolve()),
     /** Overlay CSS-pixel pointer, or null when unavailable. */
     overlayPointer: () => (inApp ? tauri.core.invoke('overlay_pointer') : Promise.resolve(null)),
     /** Capture clicks (true) or let them through to the game (false). */

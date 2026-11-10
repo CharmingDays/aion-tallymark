@@ -164,3 +164,31 @@
 .cfg.narrow .cfg-row.wide-ctl { flex-direction: column; align-items: stretch; gap: 8px; }
 .cfg.narrow .cfg-row.wide-ctl .cfg-ctl { justify-content: flex-start; }
 .cfg.narrow .cfg-aside { display: none; }
+
+/* Toasts & pop-ups: type picker, preview, text and colour-with-Default rows. */
+.cfg-sec-acts { display: inline-flex; gap: 6px; flex: 0 0 auto; }
+.cfg-sec-acts .btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cfg-sec-acts svg { width: 13px; height: 13px; }
+.cfg-kinds { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.cfg-kinds button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.cfg-kinds button.on { border-color: var(--accent); background: var(--accent-hl); color: var(--accent); font-weight: 600; }
+.cfg-kinds .cfg-dot { margin: 0; }
+.cfg-tp-stage { padding: 16px 14px; border-top: 1px solid var(--border); background: repeating-linear-gradient(45deg, #1b2029 0 10px, #171b23 10px 20px); overflow: hidden; }
+.cfg-tp-stage.off { opacity: 0.45; }
+.cfg-tp-stage .notify-host { max-width: 560px; margin: 0 auto; }
+.cfg-tp-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--border); }
+.cfg-tp-foot .btn { flex: 0 0 auto; }
+.cfg-text-in { width: 240px; text-align: left; }
+.cfg-text-in::placeholder { color: var(--faint); }
+.cfg-swatches .cfg-sw-default { width: auto; height: 18px; padding: 0 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--muted); font: inherit; font-size: 11px; }
+.cfg-swatches .cfg-sw-default.on { border-color: var(--accent); color: var(--accent); }
+.cfg-swatches button:disabled, .cfg-swatches input:disabled { opacity: 0.5; cursor: default; }
+/* The hidden cube window's look (css/cube.css at 16px per rem). */
+.cfg-cube { --cube-accent: #22d3ee; position: relative; max-width: 432px; margin: 0 auto; min-height: 102px; box-sizing: border-box; padding: 16px 53px 16px 16px; display: flex; align-items: center; gap: 16px; background: #101d25; color: var(--cube-accent); border: 1px solid var(--cube-accent); border-radius: 13px; box-shadow: 0 0 29px #22d3ee55, inset 0 0 19px #22d3ee12; }
+.cfg-cube .cube-icon { flex: 0 0 43px; width: 43px; height: 43px; }
+.cfg-cube .cube-copy { min-width: 0; }
+.cfg-cube .cube-title { display: block; font-size: var(--t-font, 23px); line-height: 1.25; font-weight: 750; }
+.cfg-cube .cube-subline { display: block; margin-top: 6px; font-size: 18px; line-height: 1.3; color: var(--t-muted, #d0e8ec); }
+.cfg-cube.no-icon .cube-icon { display: none; }
+.narrow .cfg-text-in { width: 100%; }
+

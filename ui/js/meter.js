@@ -258,6 +258,7 @@
 
   function render(data) {
     latest = data;
+    window.toastStyle.remember(data.toast_styles);
     if (window.petsTab) window.petsTab.onLive(data);
     const m = data.meter;
     const f = fightState(data);
@@ -292,7 +293,7 @@
     renderRecent(m);
     renderHistory(data.history || []);
     renderCapture(data.capture);
-    if (data.settings) window.configPanel.update(data.settings);
+    if (data.settings) window.configPanel.update(data.settings, data.toast_styles);
   }
 
   function lost() {

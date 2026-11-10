@@ -37,7 +37,7 @@
   background: var(--panel);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--t-font, 13px);
   overflow: hidden;
   pointer-events: auto;
   transition: opacity 160ms ease, transform 160ms ease;
@@ -57,7 +57,7 @@
 .t-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
 .t-text { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .t-title { font-weight: 600; }
-.t-msg { color: var(--muted); }
+.t-msg { color: var(--t-muted, var(--muted)); }
 .t-chip {
   flex: 0 0 auto;
   padding: 2px 8px;
@@ -291,13 +291,17 @@
 .t-pet.done .tp-done { display: grid; }
 .tp-text { display: flex; flex-direction: column; gap: 4px; }
 .tp-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.tp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 14px; font-weight: 500; }
+.tp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--t-font, 14px); font-weight: 500; }
 .tp-fam { flex: 0 0 auto; padding: 1px 6px; border-radius: 999px; background: var(--surface); color: var(--fam, var(--tone)); font-size: 11px; font-weight: 600; }
 .tp-count { margin-left: auto; flex: 0 0 auto; font-weight: 600; }
 .t-pet.done .tp-count, .t-pet.done .tp-status { color: var(--live); }
 .tp-count.bump { animation: tp-bump 360ms ease-out; }
 @keyframes tp-bump { 30% { transform: scale(1.18); color: var(--tone); } }
-.tp-status { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+.tp-status { color: var(--t-muted, var(--muted)); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 .tp-prog { display: block; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
 .tp-prog > i { display: block; height: 100%; border-radius: inherit; background: var(--tone); transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .t-pet .t-bar { opacity: 0.5; }
+
+/* Config > Toasts & pop-ups: no icon, and the preview's toasts in place. */
+.toast.no-icon .t-dot, .toast.no-icon .tp-img { display: none; }
+.notify-host.inline { position: static; left: auto; z-index: auto; width: 100%; transform: none; pointer-events: auto; }
