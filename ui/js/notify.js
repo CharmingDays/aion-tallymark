@@ -19,8 +19,8 @@
 // `pet` toasts (Figma "Toast - Pet soul progress") show one pet's soul
 // progress. There is one per pet (key `pet:<id>`): another soul updates its
 // counter and bar in place and restarts its own timer (no hide and re-show),
-// a summon or level up switches it to the completed look, and with two pet
-// toasts up a third pet takes over the oldest one. They keep their own clock
+// a summon or level up switches it to the completed look, and a soul for a
+// different pet takes over the one pet toast (never two at once). They keep their own clock
 // (see toast-queue.js), hiding `hideMs` after the last soul.
 (function () {
   const { esc } = window.fmt;
@@ -153,17 +153,18 @@
 
     /** Take in a pet update; true when it went to a toast already showing. */
     function updatePet(spec, now) {
-      let t = toasts.find((o) => o.key === spec.key);
       if (spec.iconOnly) {
+        const t = toasts.find((o) => o.key === spec.key);
         if (t && spec.icon) { t.icon = spec.icon; paintPet(t, false); }
         return true;
       }
-      if (!t) {
-        // Two pet toasts up: the oldest one switches to this pet.
-        const pets = toasts.filter((o) => o.kind === 'pet');
-        if (pets.length < 2) return false;
-        t = pets[0];
+      // At most one pet toast: another pet's soul takes it over in place.
+      const t = queue.petTarget(toasts, spec.key);
+      if (!t) return false;
+      const switched = t.key !== spec.key;
+      if (switched) {
         t.key = spec.key;
+        t.pet = null;
         t.icon = null;
         t.gainedTotal = 0;
         t.prevNeeded = null;

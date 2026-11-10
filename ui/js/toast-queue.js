@@ -23,7 +23,8 @@
 // - Hover pauses the counting toast while the pointer is on it.
 // - Self-timed toasts (pet soul progress) keep their own clock: they count
 //   down whenever they are queued, whatever else is showing, and never take
-//   the shared countdown turn.
+//   the shared countdown turn. There is at most one pet toast: a soul for
+//   another pet takes it over (petTarget).
 (function (root) {
   const BATCH_MS = 250;
   const IMMINENT_HOLD_MS = 2000;
@@ -92,7 +93,12 @@
     return { list: list.filter((o) => !expired.includes(o)), expired };
   }
 
-  const api = { BATCH_MS, IMMINENT_HOLD_MS, eligible, counter, add, tick };
+  /** The pet toast a pet update goes to: the one showing (any pet), or null for a new one. */
+  function petTarget(list, key) {
+    return list.find((o) => o.kind === 'pet' && o.key === key) || list.find((o) => o.kind === 'pet') || null;
+  }
+
+  const api = { BATCH_MS, IMMINENT_HOLD_MS, eligible, counter, add, tick, petTarget };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.toastQueue = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -16,3 +16,11 @@ test('a pet toast keeps its own clock beside the counting alert', () => {
   assert.equal(gone.expired.length, 1);
   assert.equal(gone.list.length, 0);
 });
+
+test('only one pet toast: another pet takes over the one showing', () => {
+  const alert = toast('alert');
+  const pet = toast('pet:1104', { kind: 'pet', selfTimed: true });
+  assert.equal(q.petTarget([alert], 'pet:1104'), null, 'no pet toast yet: a new one');
+  assert.equal(q.petTarget([alert, pet], 'pet:1104'), pet, 'same pet updates in place');
+  assert.equal(q.petTarget([alert, pet], 'pet:1006'), pet, 'a different pet replaces it');
+});
