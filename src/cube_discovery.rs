@@ -87,7 +87,9 @@ impl CubeDiscovery {
             .collect();
         // Offsets are retained so a labelled approach/collect/leave run can
         // calibrate coordinates; these bytes are NOT used as trusted positions.
-        let shown = &packet[at..packet.len().min(at + 512)];
+        // The pet opcodes keep the whole login list (about 3 KB) visible.
+        let limit = if crate::pets::pet_opcode(packet).is_some() { 16 * 1024 } else { 512 };
+        let shown = &packet[at..packet.len().min(at + limit)];
         let hex: String = shown.iter().map(|b| format!("{b:02x}")).collect();
         let relative = server_identified
             .then(|| id.and_then(|id| detector.relative(id, now)))

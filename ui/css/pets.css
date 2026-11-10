@@ -1,0 +1,55 @@
+/* Detailed meter page tabs and the Pets tab. */
+.page-tabs { flex: 0 0 auto; display: flex; flex-wrap: nowrap; align-items: flex-end; gap: var(--s-4); min-width: 0; padding: var(--s-2) var(--s-5) 0; background: var(--panel); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.page-tabs > button, .page-tabs .more-btn { flex: none; padding: 4px 0 6px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.page-tabs > button:hover, .page-tabs .more-btn:hover { color: var(--text); }
+.page-tabs > button.on, .page-tabs .more-btn.on { border-bottom-color: var(--accent); color: var(--text); }
+.page-tabs > button[hidden], .tab-more[hidden], .more-menu[hidden] { display: none; }
+.tab-more { position: relative; flex: none; }
+.page-tabs .more-btn { display: inline-flex; align-items: center; gap: 6px; }
+.more-btn .chev { width: 0; height: 0; border: 4px solid transparent; border-top-color: currentColor; border-bottom: 0; transition: transform 0.15s; }
+.more-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.more-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; min-width: 150px; margin: 0; padding: 4px; list-style: none; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+.more-menu button { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.more-menu button:hover, .more-menu button:focus-visible { background: var(--surface); color: var(--text); outline: none; }
+.more-menu button.on { background: var(--accent-hl); color: var(--text); }
+[data-page-view][hidden] { display: none !important; }
+
+.pets-view { flex: 1 1 auto; min-height: 0; display: flex; padding: var(--s-4) var(--s-5); }
+.pets-view .pets { flex: 1 1 auto; }
+.pets-head { justify-content: flex-start; }
+.pets-head #pets-count { margin-left: auto; }
+.pets-filters { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-3); }
+.pets-filters input, .pets-filters select { padding: 4px var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font: inherit; font-size: 13px; }
+.pets-filters input { flex: 1 1 220px; min-width: 0; max-width: 360px; }
+.pets-note { flex: 0 0 auto; margin: 0 0 var(--s-3); color: var(--muted); font-size: 12px; }
+.pets-note[hidden] { display: none; }
+.pets-table .c-fam { width: 84px; }
+.pets-table .c-status { width: 118px; }
+.pets-table .c-souls { width: 170px; }
+.pets-table .c-src { width: 28%; }
+.pets-table .c-when { width: 112px; }
+.pets-table th, .pets-table td { text-align: left; }
+.pets-table td { white-space: nowrap; }
+.pets-table td.name { font-weight: 500; }
+.pets-table td.when, .pets-table td.src { color: var(--muted); font-size: 12px; }
+.pets-table tr.unseen td.name { color: var(--muted); }
+.pets-table tr.summoned td.status { color: var(--accent); }
+.pets-table tr.max td.status { color: var(--live); }
+.pets-table tr.unknown td.status, .pets-table tr.locked td.status { color: var(--faint); }
+.pets-table td.souls { display: flex; align-items: center; gap: var(--s-2); }
+.pets-table td.souls .num { min-width: 52px; font-variant-numeric: tabular-nums; }
+.pet-bar { flex: 1 1 auto; height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; }
+.pet-bar > i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.pets-table tr.max .pet-bar > i { background: var(--live); }
+.pets-table tr.unseen .pet-bar > i { background: var(--faint); }
+.fam { padding: 1px 6px; border-radius: 999px; background: var(--surface); font-size: 11px; font-weight: 600; }
+.fam-cogni { color: #F5B14C; }
+.fam-fera { color: #4ADE80; }
+.fam-natura { color: #5EEAD4; }
+.fam-varian { color: #C084FC; }
+.fam-special { color: #F87171; }
+@media (max-width: 1000px) {
+  .pets-view { min-height: 480px; }
+  .pets-table .c-src, .pets-table .c-when { width: 0; }
+  .pets-table td.src, .pets-table td.when, .pets-table th:nth-child(5), .pets-table th:nth-child(6) { display: none; }
+}

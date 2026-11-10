@@ -66,6 +66,10 @@ static FILES: &[(&str, &str, &[u8])] = &[
     ("/js/ability-share.js", JS, include_bytes!("../ui/js/ability-share.js")),
     ("/js/replay-trim.js", JS, include_bytes!("../ui/js/replay-trim.js")),
     ("/js/toast.js", JS, include_bytes!("../ui/js/toast.js")),
+    ("/js/pet-list.js", JS, include_bytes!("../ui/js/pet-list.js")),
+    ("/js/pets.js", JS, include_bytes!("../ui/js/pets.js")),
+    ("/js/page-tabs.js", JS, include_bytes!("../ui/js/page-tabs.js")),
+    ("/css/pets.css", CSS, include_bytes!("../ui/css/pets.css")),
     ("/toast.html", HTML, include_bytes!("../ui/toast.html")),
     (
         "/fonts/Inter-Variable.woff2",
@@ -88,6 +92,7 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> std::io::Result<u16> {
         .route("/api/unlock", post(unlock))
         .route("/api/history/clear", post(clear_history))
         .route("/api/monster-names", get(monster_names))
+        .route("/api/pets", get(pets))
         .route("/api/monster-name", post(set_monster_name))
         .route("/api/session/save", post(save_session))
         .route("/api/sessions", get(list_sessions))
@@ -200,6 +205,10 @@ async fn unlock(State(state): State<Arc<AppState>>) -> StatusCode {
 async fn clear_history(State(state): State<Arc<AppState>>) -> StatusCode {
     state.clear_history();
     StatusCode::NO_CONTENT
+}
+
+async fn pets(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    ([(header::CACHE_CONTROL, "no-store")], Json(state.pets()))
 }
 
 async fn monster_names(State(state): State<Arc<AppState>>) -> impl IntoResponse {

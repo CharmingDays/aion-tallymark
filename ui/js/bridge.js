@@ -115,6 +115,7 @@
     setMonsterName: (type, name) => (inApp
       ? tauri.core.invoke('set_monster_name', { monsterType: type, name })
       : post('/api/monster-name', { type, name }, WRITE)),
+    getPets: () => (inApp ? tauri.core.invoke('pets') : get('/api/pets')),
     saveSession: () => (inApp ? tauri.core.invoke('save_session') : post('/api/session/save', null, WRITE)),
     listSessions: () => (inApp ? tauri.core.invoke('list_sessions') : get('/api/sessions')),
     getSession: (id) => (inApp ? tauri.core.invoke('get_session', { id }) : get(sessionPath(id))),

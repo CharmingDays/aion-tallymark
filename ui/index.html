@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="css/theme.css">
 <link rel="stylesheet" href="css/meter.css">
 <link rel="stylesheet" href="css/notify.css">
+<link rel="stylesheet" href="css/pets.css">
 </head>
 <body>
 <header class="topbar">
@@ -45,7 +46,16 @@
   </div>
 </header>
 
-<main class="layout">
+<nav class="page-tabs" id="page-tabs" role="tablist" aria-label="Pages">
+  <button type="button" role="tab" data-page="meter" data-primary="1" class="on">Meter</button>
+  <button type="button" role="tab" data-page="pets">Pets</button>
+  <div class="tab-more" id="page-more" hidden>
+    <button type="button" class="more-btn" id="page-more-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="page-more-menu"><span id="page-more-label">More</span><span class="chev" aria-hidden="true"></span></button>
+    <ul class="more-menu" id="page-more-menu" role="menu" aria-label="More pages" hidden></ul>
+  </div>
+</nav>
+
+<main class="layout" data-page-view="meter">
   <section class="card players">
     <div class="card-head">
       <h2>Players</h2>
@@ -140,6 +150,41 @@
   </aside>
 </main>
 
+<main class="pets-view" id="pets-view" data-page-view="pets" hidden>
+  <section class="card pets">
+    <div class="card-head pets-head">
+      <h2>Pets</h2>
+      <span class="sub" id="pets-sub">Loading pets</span>
+      <span class="sub" id="pets-count"></span>
+    </div>
+    <div class="pets-filters">
+      <input type="search" id="pets-search" placeholder="Search name, family or soul source" aria-label="Search pets" autocomplete="off">
+      <select id="pets-family" aria-label="Family"></select>
+      <select id="pets-show" aria-label="Show">
+        <option value="">All pets</option>
+        <option value="progress">Souls collected</option>
+        <option value="locked">Not summoned</option>
+        <option value="summoned">Summoned</option>
+        <option value="max">Max level</option>
+      </select>
+      <select id="pets-sort" aria-label="Sort">
+        <option value="close">Closest to unlock</option>
+        <option value="name">Name</option>
+        <option value="family">Family</option>
+        <option value="level">Level</option>
+      </select>
+    </div>
+    <p class="pets-note" id="pets-note" hidden>Your summoned pets load when you enter the game with the meter running. Soul counts update as souls drop and are kept between sessions.</p>
+    <div class="scroll">
+      <table class="list pets-table">
+        <colgroup><col><col class="c-fam"><col class="c-status"><col class="c-souls"><col class="c-src"><col class="c-when"></colgroup>
+        <thead><tr><th>PET</th><th>FAMILY</th><th>STATUS</th><th>SOULS</th><th>SOUL SOURCE</th><th>UPDATED</th></tr></thead>
+        <tbody id="pets-rows"><tr class="empty-row"><td colspan="6">Loading pets</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
 <section class="alerts-panel config-panel" id="config-panel" hidden>
   <div class="ap-head"><h2>Config</h2><button type="button" class="t-close" data-close title="Close"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div>
   <div class="ap-body">
@@ -209,6 +254,10 @@
 <script src="js/heal-share.js"></script>
 <script src="js/npcap-help.js"></script>
 <script src="js/stagger-view.js"></script>
+<script src="js/tab-overflow.js"></script>
+<script src="js/pet-list.js"></script>
+<script src="js/pets.js"></script>
+<script src="js/page-tabs.js"></script>
 <script src="js/meter.js"></script>
 </body>
 </html>

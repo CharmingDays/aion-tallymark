@@ -58,11 +58,14 @@ pub struct Live {
     pub settings: SettingsView,
     pub history: Vec<UnitHistory>,
     pub cube_alerts: Vec<crate::hidden_cubes::CubeAlert>,
+    /// Changes whenever the pet tracker does; the Pets tab refetches then.
+    pub pets_version: u64,
 }
 
 pub struct AppState {
     combat: Mutex<Combat>,
     cubes: Mutex<crate::hidden_cubes::Detector>,
+    pets: Mutex<crate::pets::Pets>,
     hidden_cube_alerts: AtomicBool,
     capture: Mutex<CaptureInfo>,
     /// When on, closing the overlay keeps the app in the tray and reopens it
@@ -93,6 +96,21 @@ impl AppState {
             Some(sessions::default_dir()),
         )
         .with_alerts(Some(alerts::default_path()))
+        .with_pets(Some(crate::pets::default_path()))
+    }
+
+    /// Load the last known pet progress from `path` and save changes back to it.
+    pub fn with_pets(self, path: Option<PathBuf>) -> Self {
+        *self.pets.lock().unwrap_or_else(|e| e.into_inner()) = crate::pets::Pets::load(path);
+        self
+    }
+
+    pub fn with_pets_state<T>(&self, f: impl FnOnce(&mut crate::pets::Pets) -> T) -> T {
+        f(&mut self.pets.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    pub fn pets(&self) -> crate::pets::PetsView {
+        self.with_pets_state(|pets| pets.view())
     }
 
     /// Load monster names from `path` and save changes back to it. Sessions
@@ -113,6 +131,7 @@ impl AppState {
         Self {
             combat: Mutex::new(combat),
             cubes: Mutex::new(crate::hidden_cubes::Detector::default()),
+            pets: Mutex::new(crate::pets::Pets::load(None)),
             hidden_cube_alerts: AtomicBool::new(stored.hidden_cube_alerts),
             capture: Mutex::new(CaptureInfo::default()),
             open_when_aion2: AtomicBool::new(stored.open_when_aion2),
@@ -282,6 +301,7 @@ impl AppState {
             meter,
             settings,
             history,
+            pets_version: self.with_pets_state(|pets| pets.version()),
             capture: self
                 .capture
                 .lock()

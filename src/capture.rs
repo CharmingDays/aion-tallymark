@@ -55,6 +55,7 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
     let mut deaths = DeathDebug::from_env();
     let mut cube_discovery = crate::cube_discovery::CubeDiscovery::from_env();
     let mut position_debug = crate::position_debug::PositionDebug::from_env();
+    let mut pet_debug = crate::pets::PetDebug::from_env();
     let mut cube_flow = None;
     while let Ok(segment) = rx.recv() {
         state.with_capture(|capture| capture.segments = capture.segments.saturating_add(1));
@@ -108,6 +109,17 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
                     }
                 }
             });
+            // Pet souls: server packets only; client bytes never parse as pets.
+            if direction != crate::position_debug::Direction::Client {
+                for packet in &cube_packets {
+                    if let Some(log) = pet_debug.as_mut() {
+                        log.observe(packet, now);
+                    }
+                    if let Some(found) = crate::pets::parse(packet) {
+                        state.with_pets_state(|pets| pets.apply(found, now));
+                    }
+                }
+            }
             if let Some(spawns) = spawns.as_mut() {
                 spawns.observe(&frame.packet, &events, now);
             }

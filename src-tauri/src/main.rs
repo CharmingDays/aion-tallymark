@@ -214,6 +214,11 @@ fn clear_history(state: State<'_, Arc<AppState>>) {
 }
 
 #[tauri::command]
+fn pets(state: State<'_, Arc<AppState>>) -> aion2dps::pets::PetsView {
+    state.pets()
+}
+
+#[tauri::command]
 fn monster_names(state: State<'_, Arc<AppState>>) -> Vec<MonsterName> {
     state.monster_names()
 }
@@ -764,6 +769,7 @@ fn main() {
             overlay_hit,
             clear_history,
             monster_names,
+            pets,
             set_monster_name,
             save_session,
             list_sessions,

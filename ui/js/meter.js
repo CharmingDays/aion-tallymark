@@ -261,6 +261,7 @@
 
   function render(data) {
     latest = data;
+    if (window.petsTab) window.petsTab.onLive(data);
     const m = data.meter;
     const f = fightState(data);
     if (!m.players.some((p) => p.id === selected)) {
