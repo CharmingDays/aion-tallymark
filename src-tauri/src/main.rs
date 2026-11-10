@@ -549,7 +549,8 @@ fn toast_size(kind: &str, style: &ToastStyle) -> (f64, f64) {
 /// or `None` for Esc or a closed window.
 fn finish_placing(app: &AppHandle, seq: Option<u64>, at: Option<(f64, f64)>) {
     let placing = {
-        let mut now = app.state::<Placer>().now.lock().unwrap();
+        let placer = app.state::<Placer>();
+        let mut now = placer.now.lock().unwrap();
         if now.as_ref().is_some_and(|p| seq.map_or(true, |s| s == p.seq)) { now.take() } else { None }
     };
     if let Some(p) = placing {
