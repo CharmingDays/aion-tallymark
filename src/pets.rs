@@ -2,13 +2,15 @@
 //!
 //! Reads three server packets the game already receives and never sends
 //! anything back:
-//! - `00 90` at login: the summoned pets and their levels. After the opcode
-//!   come 4 bytes (unknown), a count, then `count` entries of 12 bytes:
-//!   pet id (u32 LE), the same id again, level (u32 LE). Bytes after the list
-//!   are not read yet.
+//! - `00 90` at login: the whole pet state. After the opcode come 4 bytes
+//!   (unknown), a count, then `count` entries of 12 bytes: pet id (u32 LE),
+//!   the same id again, level (u32 LE), one per summoned pet. Right after
+//!   that, a second count and `count` pairs of pet id and souls (u32 LE
+//!   each): souls toward the next step, for summoned and unsummoned pets.
+//!   A pet in neither list has no souls. The bytes after that are another
+//!   structure and are not read.
 //! - `0d 90` when a soul drops: a count, then `count` pairs of pet id and
-//!   value (u32 LE each). For a pet that is not summoned the value is +1 per
-//!   soul; for a summoned pet it reads as the souls toward the next level.
+//!   souls gained (u32 LE each).
 //! - `0e 90` when a pet is summoned or levels up: the same layout as `0d 90`,
 //!   with the soul total that completed the step.
 //!
@@ -73,8 +75,12 @@ fn plausible_id(id: u32) -> bool {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PetPacket {
-    /// `00 90`: summoned pets with their level.
-    List(Vec<(u32, u8)>),
+    /// `00 90`: summoned pets with their level, and souls toward the next
+    /// step (`None` when the souls section did not parse).
+    List {
+        levels: Vec<(u32, u8)>,
+        souls: Option<Vec<(u32, u32)>>,
+    },
     /// `0d 90`: soul drops.
     Souls(Vec<(u32, u32)>),
     /// `0e 90`: a pet summoned or levelled.
@@ -99,7 +105,7 @@ pub fn parse(packet: &[u8]) -> Option<PetPacket> {
     let op = packet.get(at..at + 2)?;
     let rest = &packet[at + 2..];
     match op {
-        [0x00, 0x90] => parse_list(rest).map(PetPacket::List),
+        [0x00, 0x90] => parse_list(rest).map(|(levels, souls)| PetPacket::List { levels, souls }),
         [0x0D, 0x90] => parse_pairs(rest).map(PetPacket::Souls),
         [0x0E, 0x90] => parse_pairs(rest).map(PetPacket::Stepped),
         _ => None,
@@ -110,7 +116,9 @@ fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
 }
 
-fn parse_list(rest: &[u8]) -> Option<Vec<(u32, u8)>> {
+type Lists = (Vec<(u32, u8)>, Option<Vec<(u32, u32)>>);
+
+fn parse_list(rest: &[u8]) -> Option<Lists> {
     let mut at = 4;
     let count = usize::try_from(try_read_varint(rest, &mut at)?).ok()?;
     if count == 0 || count > 1000 || rest.len() < at + count * 12 {
@@ -125,7 +133,23 @@ fn parse_list(rest: &[u8]) -> Option<Vec<(u32, u8)>> {
         }
         out.push((id, level as u8));
     }
-    Some(out)
+    let souls = parse_souls(rest, at + count * 12);
+    Some((out, souls))
+}
+
+/// The souls section right after the level list: a count, then pairs.
+fn parse_souls(rest: &[u8], mut at: usize) -> Option<Vec<(u32, u32)>> {
+    let count = usize::try_from(try_read_varint(rest, &mut at)?).ok()?;
+    if count > 1000 || rest.len() < at + count * 8 {
+        return None;
+    }
+    (0..count)
+        .map(|i| {
+            let p = at + i * 8;
+            let (id, souls) = (u32_at(rest, p)?, u32_at(rest, p + 4)?);
+            (plausible_id(id) && souls <= 10_000).then_some((id, souls))
+        })
+        .collect()
 }
 
 fn parse_pairs(rest: &[u8]) -> Option<Vec<(u32, u32)>> {
@@ -171,7 +195,7 @@ pub struct PetRow {
     pub souls: u32,
     /// Souls for the next step; `None` at the top level.
     pub needed: Option<u32>,
-    /// False when no packet has mentioned this pet yet.
+    /// False when nothing is known yet: no login list and no packet about it.
     pub seen: bool,
     pub updated_ms: Option<i64>,
 }
@@ -219,32 +243,45 @@ impl Pets {
 
     pub fn apply(&mut self, packet: PetPacket, now: i64) {
         match packet {
-            PetPacket::List(list) => {
-                // The login list is the whole set of summoned pets.
-                for (id, p) in self.saved.pets.iter_mut() {
-                    if p.level > 0 && !list.iter().any(|(seen, _)| seen == id) {
-                        p.level = 0;
-                        p.updated_ms = now;
-                    }
+            PetPacket::List { levels, souls } => {
+                // The login list is the whole state of the logged-in
+                // character, so it replaces what was saved (also another
+                // character's progress).
+                let before = std::mem::take(&mut self.saved.pets);
+                let mut next: BTreeMap<u32, Progress> = BTreeMap::new();
+                for (id, level) in levels {
+                    next.entry(id).or_default().level = level.min(MAX_LEVEL);
                 }
-                for (id, level) in list {
-                    let p = self.saved.pets.entry(id).or_default();
-                    if p.level != level {
-                        if level > p.level {
-                            p.souls = 0;
+                match souls {
+                    Some(souls) => {
+                        for (id, count) in souls {
+                            next.entry(id).or_default().souls = count;
                         }
-                        p.level = level.min(MAX_LEVEL);
-                        p.updated_ms = now;
+                    }
+                    // Without the souls section keep the saved souls of pets
+                    // whose level did not change.
+                    None => {
+                        for (id, old) in &before {
+                            let level = next.get(id).map_or(0, |p| p.level);
+                            if old.level == level && old.souls > 0 {
+                                next.entry(*id).or_default().souls = old.souls;
+                            }
+                        }
                     }
                 }
+                for (id, p) in next.iter_mut() {
+                    p.updated_ms = match before.get(id) {
+                        Some(old) if old.level == p.level && old.souls == p.souls => old.updated_ms,
+                        _ => now,
+                    };
+                }
+                self.saved.pets = next;
                 self.saved.list_ms = Some(now);
             }
             PetPacket::Souls(drops) => {
-                for (id, value) in drops {
+                for (id, gained) in drops {
                     let p = self.saved.pets.entry(id).or_default();
-                    // Unverified for summoned pets: the value read as a running
-                    // count there (1, 2) and as +1 per soul before summoning.
-                    p.souls = if p.level == 0 { p.souls.saturating_add(value) } else { value };
+                    p.souls = p.souls.saturating_add(gained);
                     p.updated_ms = now;
                 }
             }
@@ -305,7 +342,7 @@ impl Pets {
             level,
             souls: p.map_or(0, |p| p.souls),
             needed: souls_needed(level),
-            seen: p.is_some(),
+            seen: p.is_some() || self.saved.list_ms.is_some(),
             updated_ms: p.map(|p| p.updated_ms),
         }
     }
@@ -409,20 +446,54 @@ mod tests {
     }
 
     #[test]
-    fn login_list_sets_levels() {
-        // Start of a real 00 90 list: 1002 lv1, 1003 lv1, 1011 lv2.
-        let list = frame("00902a04000003ea030000ea03000001000000eb030000eb03000001000000f3030000f303000002000000ffff");
-        assert_eq!(parse(&list), Some(PetPacket::List(vec![(1002, 1), (1003, 1), (1011, 2)])));
+    fn captured_login_list_sets_levels_and_souls() {
+        // A real 00 90 from a relog: 91 summoned pets, then 100 soul counts,
+        // then the first bytes of the next structure.
+        let hex = include_str!("../tests/data/pet-list-0728.hex").trim();
+        let PetPacket::List { levels, souls } = parse(&frame(hex)).expect("login list") else {
+            panic!("not a list");
+        };
+        assert_eq!(levels.len(), 91);
+        let at = |level: u8| levels.iter().filter(|(_, l)| *l == level).count();
+        assert_eq!((at(1), at(2), at(3)), (82, 7, 2));
+        let souls = souls.expect("souls section");
+        assert_eq!(souls.len(), 100);
+        assert_eq!(souls.iter().filter(|(id, _)| !levels.iter().any(|(l, _)| l == id)).count(), 24);
+        assert_eq!(souls.iter().find(|(id, _)| *id == 1006).map(|s| s.1), Some(12));
+
+        let mut pets = Pets::load(None);
+        pets.apply(PetPacket::Souls(vec![(1999, 3)]), 1);
+        pets.apply(PetPacket::List { levels, souls: Some(souls) }, 2);
+        assert!(pets.progress(1999).is_none(), "the login list replaces saved progress");
+        let p1006 = pets.progress(1006).unwrap().clone();
+        assert_eq!((p1006.level, p1006.souls), (1, 12));
+        // Soul drops add, summoned or not (1006 got 1, 1, 2, 2, 1).
+        for gained in [1, 1, 2, 2, 1] {
+            pets.apply(PetPacket::Souls(vec![(1006, gained)]), 3);
+        }
+        assert_eq!(pets.progress(1006).unwrap().souls, 19);
+        let view = pets.view();
+        assert_eq!(view.summoned, 91);
+        assert_eq!(view.list_ms, Some(2));
+        assert!(view.pets.iter().all(|r| r.seen), "known once a list arrived");
+        assert_eq!(souls_needed(2), Some(75));
+        assert_eq!(souls_needed(MAX_LEVEL), None);
+    }
+
+    #[test]
+    fn login_list_without_souls_section_keeps_levels() {
+        // 1002 lv1, 1003 lv1, 1011 lv2 and a count that runs past the end.
+        let list = frame("00902a04000003ea030000ea03000001000000eb030000eb03000001000000f3030000f30300000200000005");
+        assert_eq!(
+            parse(&list),
+            Some(PetPacket::List { levels: vec![(1002, 1), (1003, 1), (1011, 2)], souls: None })
+        );
         assert_eq!(parse(&frame("00902a04000003ea030000eb03000001000000")), None);
         let mut pets = Pets::load(None);
         pets.apply(PetPacket::Souls(vec![(1004, 1)]), 1);
         pets.apply(parse(&list).unwrap(), 2);
-        let view = pets.view();
-        assert_eq!(view.summoned, 3);
-        assert_eq!(view.list_ms, Some(2));
-        assert_eq!(pets.progress(1004).unwrap().souls, 1, "unsummoned souls stay");
-        assert_eq!(souls_needed(2), Some(75));
-        assert_eq!(souls_needed(MAX_LEVEL), None);
+        assert_eq!(pets.view().summoned, 3);
+        assert_eq!(pets.progress(1004).unwrap().souls, 1, "kept when souls are missing");
     }
 
     #[test]
