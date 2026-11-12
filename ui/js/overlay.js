@@ -359,6 +359,13 @@
   scale();
   paintOpacity();
   bridge.subscribe(render, showError);
+  // The app pings the overlay each time it is shown from the tray; no answer
+  // in a few seconds and it rebuilds the window (a page that stopped drawing).
+  if (window.__TAURI__ && window.__TAURI__.window) {
+    window.__TAURI__.window.getCurrentWindow().listen('overlay-ping', (event) => {
+      window.__TAURI__.core.invoke('overlay_pong', { n: event.payload }).catch(() => {});
+    }).catch(() => {});
+  }
   // Event alerts: at the top of the screen in the app, a compact pill here in
   // a browser. They are set up in the detailed meter.
   window.notify.startAlerts(window.notify.hostFor({ compact: true }));

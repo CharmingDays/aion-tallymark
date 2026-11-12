@@ -49,39 +49,12 @@ pub fn hide_to_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Show the overlay again (from the tray menu, click, or game start).
-pub fn reveal_overlay(app: &AppHandle, build_overlay: impl FnOnce(&AppHandle) -> tauri::Result<()>) {
-    let tray = app.state::<TrayWatch>();
-    tray.set_waiting(false);
-    if let Some(window) = app.get_webview_window("overlay") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-        return;
-    }
-    if let Err(err) = build_overlay(app) {
-        tracing::warn!("could not open the overlay from the tray: {err}");
-    }
-}
+// The overlay is shown again by main's `reveal_overlay` (tray menu, click,
+// game start, boss).
 
-/// Boss popup: show the overlay without taking focus from the game.
-pub fn reveal_overlay_quietly(app: &AppHandle, build_overlay: impl FnOnce(&AppHandle) -> tauri::Result<()>) {
-    let tray = app.state::<TrayWatch>();
-    tray.set_waiting(false);
-    if let Some(window) = app.get_webview_window("overlay") {
-        if !show_no_activate(&window) {
-            let _ = window.show();
-        }
-        return;
-    }
-    // A new overlay is built unfocused.
-    if let Err(err) = build_overlay(app) {
-        tracing::warn!("could not open the overlay for a boss: {err}");
-    }
-}
-
+/// Show without taking focus from the game (also restores a minimized window).
 #[cfg(windows)]
-fn show_no_activate(window: &tauri::WebviewWindow) -> bool {
+pub fn show_no_activate(window: &tauri::WebviewWindow) -> bool {
     #[link(name = "user32")]
     extern "system" {
         fn ShowWindow(hwnd: isize, cmd: i32) -> i32;
@@ -98,7 +71,7 @@ fn show_no_activate(window: &tauri::WebviewWindow) -> bool {
 }
 
 #[cfg(not(windows))]
-fn show_no_activate(_window: &tauri::WebviewWindow) -> bool {
+pub fn show_no_activate(_window: &tauri::WebviewWindow) -> bool {
     false
 }
 

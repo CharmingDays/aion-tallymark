@@ -20,6 +20,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod app_log;
 mod tray_watch;
 mod startup;
 
@@ -749,6 +750,13 @@ fn restore_overlay_rect(app: &AppHandle, window: &WebviewWindow) {
     let Some(saved) = window_state::load(&window_state::default_path()) else {
         return;
     };
+    if let Some(rect) = fit_to_monitors(app, saved) {
+        place_overlay(window, rect);
+    }
+}
+
+/// `rect` (physical px) fitted to the monitors present now; `None` without monitors.
+fn fit_to_monitors(app: &AppHandle, rect: Rect) -> Option<Rect> {
     let monitors: Vec<window_state::Monitor> = app
         .available_monitors()
         .unwrap_or_default()
@@ -768,14 +776,122 @@ fn restore_overlay_rect(app: &AppHandle, window: &WebviewWindow) {
             .iter()
             .position(|m| m.rect.x == p.position().x && m.rect.y == p.position().y)
     });
-    if let Some(rect) = window_state::fit(saved, &monitors, primary, OVERLAY_MIN) {
-        let size = PhysicalSize::new(rect.width, rect.height);
-        // Size again after the move: moving onto a monitor with another DPI
-        // makes Windows rescale the window.
-        let _ = window.set_size(size);
-        let _ = window.set_position(PhysicalPosition::new(rect.x, rect.y));
-        let _ = window.set_size(size);
+    window_state::fit(rect, &monitors, primary, OVERLAY_MIN)
+}
+
+fn place_overlay(window: &WebviewWindow, rect: Rect) {
+    let size = PhysicalSize::new(rect.width, rect.height);
+    // Size again after the move: moving onto a monitor with another DPI
+    // makes Windows rescale the window.
+    note("overlay size", window.set_size(size));
+    note("overlay position", window.set_position(PhysicalPosition::new(rect.x, rect.y)));
+    note("overlay size", window.set_size(size));
+}
+
+/// Log a failed window call to app.log instead of dropping it.
+fn note(what: &str, result: tauri::Result<()>) {
+    if let Err(err) = result {
+        tracing::warn!(target: "overlay", "{what} failed: {err}");
     }
+}
+
+/// Overlay pings: the page answers each with its number, so a stuck or dead
+/// page (nothing drawn in a transparent window) can be rebuilt.
+#[derive(Default)]
+struct OverlayPing {
+    sent: AtomicU64,
+    answered: AtomicU64,
+}
+
+const PING_WAIT: Duration = Duration::from_secs(3);
+
+/// Show the overlay again (tray click, Show overlay, the game starting, or a
+/// boss when `quiet`): back on a monitor that is there now, on top, redrawn,
+/// with a fresh snapshot; rebuilt if its page does not answer.
+fn reveal_overlay(app: &AppHandle, quiet: bool) {
+    app.state::<tray_watch::TrayWatch>().set_waiting(false);
+    let Some(window) = app.get_webview_window(OVERLAY) else {
+        match build_overlay(app) {
+            Ok(()) => tracing::info!(target: "overlay", quiet, "overlay built"),
+            Err(err) => tracing::warn!(target: "overlay", "could not open the overlay: {err}"),
+        }
+        return;
+    };
+    match (window.outer_position(), window.inner_size()) {
+        (Ok(pos), Ok(size)) => {
+            let now = Rect { x: pos.x, y: pos.y, width: size.width, height: size.height };
+            if let Some(fit) = fit_to_monitors(app, now).filter(|fit| *fit != now) {
+                tracing::info!(target: "overlay", "moved the overlay back on screen: {now:?} -> {fit:?}");
+                place_overlay(&window, fit);
+            }
+        }
+        _ => tracing::warn!(target: "overlay", "could not read the overlay's position"),
+    }
+    // Re-assert topmost: it can be lost while hidden (display sleep, full-screen games).
+    note("overlay always on top", window.set_always_on_top(false));
+    note("overlay always on top", window.set_always_on_top(true));
+    if quiet {
+        if !tray_watch::show_no_activate(&window) {
+            note("overlay show", window.show());
+        }
+    } else {
+        note("overlay unminimize", window.unminimize());
+        note("overlay show", window.show());
+        note("overlay focus", window.set_focus());
+    }
+    // A 1 px size nudge makes WebView2 draw again after a long time hidden.
+    if let Ok(size) = window.inner_size() {
+        note("overlay repaint", window.set_size(PhysicalSize::new(size.width + 1, size.height)));
+        note("overlay repaint", window.set_size(size));
+    }
+    send_live(app, OVERLAY);
+    let visible = window.is_visible().unwrap_or(false);
+    tracing::info!(target: "overlay", quiet, visible, "overlay shown");
+    watch_overlay(app.clone());
+}
+
+/// One fresh snapshot to the window `label` (hidden windows get none).
+fn send_live(app: &AppHandle, label: &str) {
+    let live = app.state::<Arc<AppState>>().live(now_ms());
+    if let Err(err) = app.emit_to(label, "live", live) {
+        tracing::warn!(target: "overlay", "could not send a snapshot to {label}: {err}");
+    }
+}
+
+/// Ping the overlay page; rebuild the window when it has not answered in PING_WAIT.
+fn watch_overlay(app: AppHandle) {
+    let n = app.state::<OverlayPing>().sent.fetch_add(1, Ordering::SeqCst) + 1;
+    if let Err(err) = app.emit_to(OVERLAY, "overlay-ping", n) {
+        tracing::warn!(target: "overlay", "could not ping the overlay: {err}");
+    }
+    thread::spawn(move || {
+        thread::sleep(PING_WAIT);
+        let ping = app.state::<OverlayPing>();
+        if ping.answered.load(Ordering::SeqCst) >= n || ping.sent.load(Ordering::SeqCst) != n {
+            return;
+        }
+        tracing::warn!(target: "overlay", "the overlay page did not answer in {PING_WAIT:?}; rebuilding it");
+        if let Some(window) = app.get_webview_window(OVERLAY) {
+            save_overlay_rect(&app);
+            note("overlay destroy", window.destroy());
+        }
+        for _ in 0..40 {
+            if app.get_webview_window(OVERLAY).is_none() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        match build_overlay(&app) {
+            Ok(()) => tracing::info!(target: "overlay", "overlay rebuilt"),
+            Err(err) => tracing::warn!(target: "overlay", "could not rebuild the overlay: {err}"),
+        }
+    });
+}
+
+/// The overlay page's answer to `overlay-ping`.
+#[tauri::command]
+fn overlay_pong(ping: State<'_, OverlayPing>, n: u64) {
+    ping.answered.fetch_max(n, Ordering::SeqCst);
 }
 
 /// Write the overlay's current rect, unless it is minimized or maximized.
@@ -783,6 +899,11 @@ fn save_overlay_rect(app: &AppHandle) {
     let Some(window) = app.get_webview_window(OVERLAY) else {
         return;
     };
+    // Hidden in the tray, Windows may move it (monitors sleeping or changing):
+    // keep the spot it had when it was last visible.
+    if !window.is_visible().unwrap_or(false) {
+        return;
+    }
     if window.is_minimized().unwrap_or(true) || window.is_maximized().unwrap_or(true) {
         return;
     }
@@ -837,6 +958,8 @@ fn show_page(app: &AppHandle, label: &str, page: &str, title: &str) -> tauri::Re
     if let Some(window) = app.get_webview_window(label) {
         let _ = window.unminimize();
         window.show()?;
+        // It got no snapshots while hidden.
+        send_live(app, label);
         return window.set_focus();
     }
     WebviewWindowBuilder::new(app, label, WebviewUrl::App(page.into()))
@@ -848,6 +971,10 @@ fn show_page(app: &AppHandle, label: &str, page: &str, title: &str) -> tauri::Re
         .build()?;
     Ok(())
 }
+
+/// Windows that get no snapshots while hidden. The cube window always does:
+/// it shows itself from them.
+const SKIP_WHEN_HIDDEN: [&str; 3] = [OVERLAY, METER, HISTORY];
 
 /// Push a snapshot to every window. The payload is the same JSON as `/api/live`.
 fn push_snapshots(app: AppHandle, state: Arc<AppState>, windowless: bool) {
@@ -869,8 +996,15 @@ fn push_snapshots(app: AppHandle, state: Arc<AppState>, windowless: bool) {
                 if popup.observe(&keys, !windowless && state.pop_up_on_boss(), hidden) {
                     let _ = app.emit("boss-show", ());
                 }
-                if !app.webview_windows().is_empty() {
-                    let _ = app.emit("live", live);
+                // The UI only: `live()` above still ticks the fight, history and
+                // boss detection whatever is shown. Hidden overlay / meter /
+                // history windows skip it and get a fresh one when shown.
+                let payload = serde_json::to_value(&live).unwrap_or_default();
+                for (label, window) in app.webview_windows() {
+                    if SKIP_WHEN_HIDDEN.contains(&label.as_str()) && !window.is_visible().unwrap_or(true) {
+                        continue;
+                    }
+                    let _ = app.emit_to(label.as_str(), "live", &payload);
                 }
                 if windowless {
                     state.take_pet_toasts();
@@ -931,13 +1065,25 @@ fn open_target_debug(state: &AppState, flag: bool) -> Option<TargetDebug> {
     }
 }
 
+/// Console logging as before, plus warnings, errors and overlay show results
+/// in a size-capped `%LOCALAPPDATA%\aion2dps\app.log`.
+fn init_logging() {
+    use tracing_subscriber::prelude::*;
+    use tracing_subscriber::{fmt, EnvFilter};
+    let console = fmt::layer().with_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")));
+    let path = window_state::default_path().with_file_name("app.log");
+    let file = match app_log::RotatingLog::open(&path) {
+        Ok(log) => Some(fmt::layer().with_ansi(false).with_writer(Mutex::new(log)).with_filter(EnvFilter::new("warn,overlay=info"))),
+        Err(err) => {
+            eprintln!("could not open {}: {err}", path.display());
+            None
+        }
+    };
+    tracing_subscriber::registry().with(console).with(file).init();
+}
+
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    init_logging();
 
     let args = Args::parse();
     let (names_path, sessions_dir, alerts_path) = if args.demo {
@@ -987,6 +1133,7 @@ fn main() {
         .manage(Dashboard(dashboard))
         .manage(Toasts::default())
         .manage(Placer::default())
+        .manage(OverlayPing::default())
         .manage(PetIcons::default())
         .manage(OverlaySaves::default())
         .manage(tray_watch::TrayWatch::default())
@@ -1009,6 +1156,7 @@ fn main() {
             place_toast,
             placer_info,
             placer_done,
+            overlay_pong,
             cube_visible,
             overlay_pointer,
             overlay_hit,
@@ -1075,11 +1223,11 @@ fn main() {
             }
             let boss_handle = handle.clone();
             handle.listen("boss-show", move |_| {
-                tray_watch::reveal_overlay_quietly(&boss_handle, build_overlay);
+                reveal_overlay(&boss_handle, true);
             });
             let show_handle = handle.clone();
             handle.listen("tray-show", move |_| {
-                tray_watch::reveal_overlay(&show_handle, build_overlay);
+                reveal_overlay(&show_handle, false);
             });
             if let Err(err) = build_cube_window(&handle) {
                 tracing::warn!("cube alert window is unavailable: {err}");

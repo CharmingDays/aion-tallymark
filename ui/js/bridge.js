@@ -10,7 +10,10 @@
     const fail = onError || (() => {});
     if (inApp) {
       tauri.core.invoke('live').then(render).catch(fail);
-      tauri.event.listen('live', (event) => render(event.payload)).catch(fail);
+      // Snapshots are sent to each window by label (a hidden overlay or meter
+      // gets none, and a fresh one when shown), so listen on this window.
+      const win = tauri.window && tauri.window.getCurrentWindow ? tauri.window.getCurrentWindow() : null;
+      (win ? win.listen('live', (event) => render(event.payload)) : tauri.event.listen('live', (event) => render(event.payload))).catch(fail);
       return;
     }
     const tick = async () => {
