@@ -1,4 +1,5 @@
-// "Check for updates" (detailed meter) and the optional quiet check at start.
+// "Check for updates" (the version pill in the detailed meter) and the optional
+// quiet check when the meter opens.
 // The app asks GitHub for the latest release of aion-tallymark; on "Update now"
 // it downloads the installer, checks its SHA-256 against the release's
 // SHA256SUMS.txt, starts it and closes so the files can be replaced. Nothing is

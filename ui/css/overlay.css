@@ -206,8 +206,6 @@ body.narrow-sm .seg .seg-short { display: inline; }
 .tool:hover { color: var(--text); }
 .tool svg { width: 1.1rem; height: 1.1rem; }
 .tool:disabled { opacity: 0.4; cursor: default; }
-.tool.update { border-color: var(--accent); color: var(--accent); }
-.tool.update[hidden] { display: none; }
 .tool.save:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .tool.save .done, .tool.save.saved .idle { display: none; }
 .tool.save.saved .done { display: block; }

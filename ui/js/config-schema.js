@@ -52,7 +52,7 @@
       keywords: ['tray', 'focus', 'restore', 'minimized'] },
     { id: 'check_updates_on_startup', section: 'general', card: 'App', type: 'toggle', default: false, store: 'local', appOnly: true,
       label: 'Check for updates on startup',
-      desc: 'Ask GitHub once when the app starts. If a newer version is out, a small button shows on the overlay; nothing is downloaded or installed until you click Update now.',
+      desc: 'Ask GitHub once when the detailed meter opens. If a newer version is out, the version pill beside the aion2dps title turns blue with a dot; nothing is downloaded or installed until you click Update now.',
       keywords: ['update', 'version', 'github', 'release', 'upgrade', 'new'] },
     { id: 'you_color', section: 'general', card: 'Appearance', type: 'color', default: '#4ade80', store: 'local',
       label: 'Your color', desc: 'Colour of your name in the overlay and in session history.',

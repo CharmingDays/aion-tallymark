@@ -388,10 +388,13 @@ body:not(.in-app) .app-only { display: none; }
 }
 
 /* Check for updates (js/updates.js); the dialog reuses the .ae dialog look */
-.app-ver { color: var(--faint); font-size: 11px; font-weight: 500; letter-spacing: 0; }
-.update-btn { position: relative; }
-.update-dot { display: none; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-.update-btn.on .update-dot { display: block; }
+/* Version pill beside the title: shows the version, click to check for updates */
+.ver-pill { position: relative; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--faint); font-size: 11px; font-weight: 500; letter-spacing: 0; cursor: pointer; }
+.ver-pill svg { width: 12px; height: 12px; }
+.ver-pill:hover { border-color: var(--faint); color: var(--text); }
+.ver-pill.on { border-color: var(--accent); color: var(--accent); }
+.update-dot { display: none; position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--panel, #12141a); }
+.ver-pill.on .update-dot { display: block; }
 .up { width: 460px; }
 .up-msg { margin: 0; line-height: 1.45; }
 .up-msg.bad { color: var(--danger); }
