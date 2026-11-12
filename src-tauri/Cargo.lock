@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "aion2dps"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "axum",
  "etherparse",
@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "aion2dps-app"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "aion2dps",
  "serde_json",
