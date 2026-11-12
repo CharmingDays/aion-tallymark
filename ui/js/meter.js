@@ -328,4 +328,5 @@
   const notifier = window.notify.startAlerts(window.notify.hostFor());
   window.alertsPanel.create($('open-alerts'), notifier);
   window.configPanel.attach(notifier);
+  window.updates.attach($('check-update'), $('app-ver'));
 })();

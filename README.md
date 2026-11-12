@@ -36,7 +36,7 @@ Get the files from the Releases page.
 - **Installer** (`aion2dps_<version>_x64-setup.exe`, recommended): installs for the current user, adds Start menu shortcuts, installs WebView2 if needed and reminds you about Npcap.
 - **Portable exe** (`aion2dps.exe`): runs from anywhere with no install. You still need WebView2 and Npcap.
 
-**Updates** are manual for now: download the new installer and run it over the old install. Your settings, timers and sessions are kept. There is no auto-update.
+**Updates**: click **Updates** in the detailed meter's top bar. The app asks GitHub for the latest release and, if it is newer, shows its notes with **Update now**, **Later** and **Skip this version**. **Update now** downloads the installer, checks its SHA-256 against the release's `SHA256SUMS.txt` (it refuses to run on a mismatch or a missing hash), starts it with a progress bar only, closes the app so its files can be replaced, and opens it again when done. Your settings, timers and sessions are kept. **Config > General > Check for updates on startup** (off by default) asks once at start and only shows a small button on the overlay. Nothing is ever installed without your click, and the only traffic is to GitHub. The portable exe is not replaced; download the new one from the release page. You can still update by hand: run the new installer over the old install.
 
 ## Usage
 
@@ -53,6 +53,7 @@ Get the files from the Releases page.
 | Saved sessions | `%LOCALAPPDATA%\aion2dps\sessions\` |
 | Event timers | `%LOCALAPPDATA%\aion2dps\alerts.json` |
 | Your monster names | `%LOCALAPPDATA%\aion2dps\monster-names.json` |
+| App log (warnings, errors, overlay and update steps; size-capped) | `%LOCALAPPDATA%\aion2dps\app.log` |
 | Debug logs (only when turned on) | `%LOCALAPPDATA%\aion2dps\death-debug.jsonl`, `target-debug.jsonl` |
 
 **Config** (gear button on the detailed meter) saves each change as you make it: a small green *Saved* shows next to the setting and in the footer, and **Undo** puts the last change back. Search (`Ctrl F`) finds any setting across sections. **Overlay > Opacity** sets the same level as `-`/`+` on the overlay. **Advanced > Debug logs** switches the pets, position and cubes logs on and off without a restart, the same as `AION2DPS_DEBUG_PETS=1`, `AION2DPS_DEBUG_POSITION=1` and `AION2DPS_DEBUG_CUBES=1` (those variables still work and keep the log on). **Toasts & pop-ups** styles each pop-up type on its own (event upcoming, starting soon and live, pet progress, hidden cube): on/off, sound, size, screen corner or edge, monitor and a nudge in pixels, title and message text with placeholders such as `{event}` or `{pet}`, text size, accent, background and text colours, background opacity and the icon. It shows a live preview, and **Send test toast** shows a sample on your PC only.
@@ -74,6 +75,8 @@ npm run build               # release exe + NSIS installer
 - Installer: `src-tauri/target/release/bundle/nsis/aion2dps_<version>_x64-setup.exe`
 
 Without Node: `cargo run --manifest-path src-tauri/Cargo.toml -- --demo`.
+
+Releasing: the in-app updater reads the latest GitHub release, so each release needs the installer named `aion2dps_<version>_x64-setup.exe` (the tag is `v<version>`) and a `SHA256SUMS.txt` asset with one `<sha256>  <file name>` line per file (for example from `sha256sum` or `Get-FileHash`). Without the hash line, the app won't install the update.
 
 Tests:
 

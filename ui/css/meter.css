@@ -386,3 +386,18 @@ body:not(.in-app) .app-only { display: none; }
   width: 32px; height: 22px; padding: 0; border: 1px solid var(--border);
   border-radius: var(--r-sm); background: none; cursor: pointer;
 }
+
+/* Check for updates (js/updates.js); the dialog reuses the .ae dialog look */
+.app-ver { color: var(--faint); font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.update-btn { position: relative; }
+.update-dot { display: none; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.update-btn.on .update-dot { display: block; }
+.up { width: 460px; }
+.up-msg { margin: 0; line-height: 1.45; }
+.up-msg.bad { color: var(--danger); }
+.up-notes { margin: 0; max-height: 240px; overflow: auto; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); font: inherit; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; scrollbar-width: thin; }
+.up-bar { height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; }
+.up-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 200ms linear; }
+.up-step { margin: 0; color: var(--muted); font-size: 12px; }
+.up .ap-btns { align-items: center; }
+.up-link { margin-right: auto; color: var(--accent); font-size: 12px; }

@@ -15,6 +15,7 @@
   <div class="brand">
     <span class="logo" aria-hidden="true"><i></i><i></i><i></i></span>
     aion2dps
+    <span class="app-ver app-only" id="app-ver"></span>
   </div>
   <div class="fight">
     <span class="dot" id="dot"></span>
@@ -40,6 +41,7 @@
     <button class="btn alerts-btn" id="open-alerts" type="button" title="Event alerts"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2a3.8 3.8 0 0 0-3.8 3.8v2.6L3 10.8h10l-1.2-2.2V6A3.8 3.8 0 0 0 8 2.2zM6.6 12.8a1.5 1.5 0 0 0 2.8 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>Alerts</button>
     <button class="btn alerts-btn" id="open-config" type="button" title="Settings"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Config</button>
     <button class="btn" id="open-history" type="button" title="Saved sessions">History</button>
+    <button class="btn alerts-btn update-btn app-only" id="check-update" type="button" title="Check for updates"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Updates<i class="update-dot" aria-hidden="true"></i></button>
     <button class="btn save-btn" id="save-session" type="button" title="Save session" disabled>
       <span class="idle"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7M4.8 6.6 8 9.8l3.2-3.2M3 13h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Save session</span>
       <span class="done"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.4 6.4 11.6 12.8 4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Saved</span>
@@ -222,6 +224,7 @@
 <script src="js/notify.js"></script>
 <script src="js/alerts-panel.js"></script>
 <script src="js/player-colors.js"></script>
+<script src="js/updates.js"></script>
 <script src="js/config-schema.js"></script>
 <script src="js/config-panel.js"></script>
 <script src="js/heal-share.js"></script>

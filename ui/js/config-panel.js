@@ -21,7 +21,7 @@
   const OPACITY_KEY = 'aion2dps.opacity';
   const SEEN_KEY = 'aion2dps.config.seen';
   /** Settings that show a NEW badge until Config has been closed once after seeing them. */
-  const FRESH = ['overlay_opacity', 'debug_pets', 'debug_position', 'debug_cubes', 'pet_toasts', 'pet_toast_secs'];
+  const FRESH = ['check_updates_on_startup', 'overlay_opacity', 'debug_pets', 'debug_position', 'debug_cubes', 'pet_toasts', 'pet_toast_secs'];
   const SAVED_MS = 2400;
   const STATUS_MS = 6000;
   /** Sections with a NEW badge in the sidebar until Config has been closed once. */
@@ -79,6 +79,7 @@
   function readLocal() {
     vals.you_color = pcApi.readYouColor();
     vals.overlay_opacity = readOpacity();
+    vals.check_updates_on_startup = window.updates ? window.updates.onStartup() : false;
   }
 
   function readAlerts(s) {
@@ -215,6 +216,7 @@
 
   async function write(d, v) {
     if (d.id === 'you_color') { pcApi.writeYouColor(v); return; }
+    if (d.id === 'check_updates_on_startup') { window.updates.setOnStartup(v); return; }
     if (d.id === 'overlay_opacity') { localStorage.setItem(OPACITY_KEY, (v / 100).toFixed(1)); return; }
     if (d.store === 'toast') return bridge.setToastStyle(d.toastKind, { [d.key]: v });
     if (d.store === 'alerts') {

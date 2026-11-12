@@ -22,6 +22,7 @@
 
 mod app_log;
 mod tray_watch;
+mod updater;
 mod startup;
 
 use std::collections::{HashMap, HashSet};
@@ -665,6 +666,33 @@ fn open_in_browser(dashboard: State<'_, Dashboard>) {
     open_browser(&dashboard.0);
 }
 
+/// "Check for updates": the latest GitHub release against this build.
+#[tauri::command]
+async fn check_update(app: AppHandle, fresh: bool) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || updater::check(&app, fresh).map(|c| c.json()))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+/// "Update now": download and verify the installer from the last check, start it, quit.
+#[tauri::command]
+async fn install_update(app: AppHandle, version: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || updater::install(&app, &version))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+/// The release page link in the update dialog. The URL is fixed here.
+#[tauri::command]
+fn open_release_page() {
+    open_browser(updater::RELEASES);
+}
+
 /// The "Get Npcap" button. The URL is fixed here, never taken from the page.
 #[tauri::command]
 fn open_npcap_page() {
@@ -1065,7 +1093,7 @@ fn open_target_debug(state: &AppState, flag: bool) -> Option<TargetDebug> {
     }
 }
 
-/// Console logging as before, plus warnings, errors and overlay show results
+/// Console logging as before, plus warnings, errors, overlay show results and update steps
 /// in a size-capped `%LOCALAPPDATA%\aion2dps\app.log`.
 fn init_logging() {
     use tracing_subscriber::prelude::*;
@@ -1073,7 +1101,7 @@ fn init_logging() {
     let console = fmt::layer().with_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")));
     let path = window_state::default_path().with_file_name("app.log");
     let file = match app_log::RotatingLog::open(&path) {
-        Ok(log) => Some(fmt::layer().with_ansi(false).with_writer(Mutex::new(log)).with_filter(EnvFilter::new("warn,overlay=info"))),
+        Ok(log) => Some(fmt::layer().with_ansi(false).with_writer(Mutex::new(log)).with_filter(EnvFilter::new("warn,overlay=info,update=info"))),
         Err(err) => {
             eprintln!("could not open {}: {err}", path.display());
             None
@@ -1134,6 +1162,7 @@ fn main() {
         .manage(Toasts::default())
         .manage(Placer::default())
         .manage(OverlayPing::default())
+        .manage(updater::Updater::default())
         .manage(PetIcons::default())
         .manage(OverlaySaves::default())
         .manage(tray_watch::TrayWatch::default())
@@ -1182,7 +1211,11 @@ fn main() {
             open_meter,
             open_history,
             open_in_browser,
-            open_npcap_page
+            open_npcap_page,
+            check_update,
+            install_update,
+            app_version,
+            open_release_page
         ])
         .on_window_event(|window, event| {
             if window_state::is_persisted(window.label()) {

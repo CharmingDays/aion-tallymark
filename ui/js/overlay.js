@@ -296,6 +296,14 @@
   // Same as Reset fight in the detailed meter: ends any boss lock and archives the fight.
   $('reset').addEventListener('click', () => bridge.reset().catch(showError));
   $('open-meter').addEventListener('click', () => bridge.openMeter());
+  // Config > App > "Check for updates on startup": only a small button here;
+  // it opens the detailed meter, where "Updates" shows what's new.
+  window.updates.startupCheck((c) => {
+    const chip = $('update-chip');
+    chip.title = `Version ${c.latest} is available - open the detailed meter to update`;
+    chip.hidden = false;
+    chip.addEventListener('click', () => bridge.openMeter());
+  });
   window.addEventListener('keydown', (event) => {
     if (event.ctrlKey || event.altKey || event.metaKey || naming.editing()) return;
     if (event.key === '-' || event.code === 'NumpadSubtract') stepOpacity(-1);

@@ -21,6 +21,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 aion2dps = { path = ".." }
 serde_json = "1"
+sha2 = "0.10"
 tauri = { version = "2", features = ["tray-icon"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time"] }
 tracing = "0.1"
