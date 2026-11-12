@@ -2,9 +2,9 @@
 //! session history windows, on top of the passive packet engine in the
 //! `aion2dps` crate.
 //!
-//! With "Open automatically when Aion 2 is detected" on, closing the overlay
-//! keeps the app in the system tray. A process-name poll (no game interaction)
-//! shows the overlay again when `AION2.exe` starts.
+//! Closing the overlay keeps the app in the system tray. A process-name poll
+//! (no game interaction) shows the overlay again when `AION2.exe` starts, if
+//! "Open automatically when Aion 2 is detected" is on.
 //!
 //! Event alerts fire in the meter and overlay pages and are shown in a small
 //! toast window over the game: the top center of the primary monitor unless
@@ -976,14 +976,14 @@ fn schedule_overlay_save(app: &AppHandle) {
     });
 }
 
-/// The overlay is the main window: closing it quits the whole app (or hides to
-/// the tray when auto-open is on), so the meter, history and toast windows
-/// close with it. Other windows only close themselves.
-fn closing_quits_app(label: &str) -> bool {
+/// The overlay is the main window: closing it hides to the tray (the meter
+/// and history windows hide with it). Other windows only close themselves.
+/// Right-click the overlay close button, or Quit on the tray icon, exits.
+fn closing_hides_to_tray(label: &str) -> bool {
     label == OVERLAY
 }
 
-/// Closing the overlay with auto-open on: stay alive in the tray instead of quitting.
+/// Stay alive in the tray and keep a tray icon so the overlay can be shown again.
 fn close_overlay_to_tray(app: &AppHandle, api: &tauri::CloseRequestApi) {
     api.prevent_close();
     save_overlay_rect(app);
@@ -1245,17 +1245,8 @@ fn main() {
                 }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if closing_quits_app(window.label()) {
-                    let app = window.app_handle();
-                    let state = app.state::<Arc<AppState>>();
-                    if state.open_when_aion2() || state.pop_up_on_boss() {
-                        // Stay in the tray for the enabled game/boss triggers.
-                        close_overlay_to_tray(app, api);
-                    } else {
-                        // Exits the process: the capture, push and web server
-                        // threads stop with it.
-                        app.exit(0);
-                    }
+                if closing_hides_to_tray(window.label()) {
+                    close_overlay_to_tray(window.app_handle(), api);
                 }
             }
         })
@@ -1318,10 +1309,10 @@ mod tests {
     }
 
     #[test]
-    fn only_the_overlay_quits_the_app() {
-        assert!(closing_quits_app(OVERLAY));
+    fn only_the_overlay_hides_to_the_tray() {
+        assert!(closing_hides_to_tray(OVERLAY));
         for label in [METER, HISTORY, "toast-0", "toast-7"] {
-            assert!(!closing_quits_app(label), "{label}");
+            assert!(!closing_hides_to_tray(label), "{label}");
         }
     }
 }

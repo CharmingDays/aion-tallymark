@@ -39,7 +39,7 @@
   const SETTINGS = [
     { id: 'open_when_aion2', section: 'general', card: 'App', type: 'toggle', default: false, appOnly: true,
       label: 'Open automatically when Aion 2 is detected',
-      desc: 'Closing the overlay keeps aion2dps in the tray; it reopens when the game starts.',
+      desc: 'If the overlay is hidden in the tray, it reopens when the game starts.',
       keywords: ['tray', 'launch', 'start', 'game'] },
     { id: 'start_with_windows', section: 'general', card: 'App', type: 'toggle', default: false, appOnly: true,
       label: 'Start with Windows',
