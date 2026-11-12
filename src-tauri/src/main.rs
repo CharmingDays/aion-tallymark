@@ -666,6 +666,14 @@ fn open_in_browser(dashboard: State<'_, Dashboard>) {
     open_browser(&dashboard.0);
 }
 
+/// Full quit, same path as the tray Quit item. The overlay close button
+/// uses this on right-click so left-click can still hide to the tray.
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    tracing::info!(target: "overlay", "quitting from the overlay close button (right-click)");
+    app.exit(0);
+}
+
 /// "Check for updates": the latest GitHub release against this build.
 #[tauri::command]
 async fn check_update(app: AppHandle, fresh: bool) -> Result<serde_json::Value, String> {
@@ -1218,6 +1226,7 @@ fn main() {
             open_meter,
             open_history,
             open_in_browser,
+            quit_app,
             open_npcap_page,
             retry_capture,
             check_update,

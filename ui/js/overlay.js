@@ -343,6 +343,10 @@
     if (latest) render(latest);
   }));
   $('close').addEventListener('click', () => bridge.closeWindow());
+  $('close').addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    bridge.quitApp();
+  });
   $('lock-chip').addEventListener('click', () => bridge.unlock().catch(() => {}));
   // Same as Reset fight in the detailed meter: ends any boss lock and archives the fight.
   $('reset').addEventListener('click', () => bridge.reset().catch(showError));

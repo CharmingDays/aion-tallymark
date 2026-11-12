@@ -162,6 +162,8 @@
     startDrag: () => { const w = currentWindow(); return w ? w.startDragging() : Promise.resolve(); },
     startResize: (direction) => { const w = currentWindow(); return w ? w.startResizeDragging(direction) : Promise.resolve(); },
     closeWindow: () => { const w = currentWindow(); return w ? w.close() : Promise.resolve(); },
+    // Full quit (same as tray Quit). Used by a right-click on the overlay close button.
+    quitApp: () => (inApp ? tauri.core.invoke('quit_app') : Promise.resolve()),
     focusWindow: () => { const w = currentWindow(); return w ? w.setFocus() : Promise.resolve(); },
   };
 })();
