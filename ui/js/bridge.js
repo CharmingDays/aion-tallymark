@@ -157,6 +157,8 @@
     openInBrowser: () => (inApp ? tauri.core.invoke('open_in_browser') : Promise.resolve()),
     // Opens the Npcap download page in the default browser. Nothing is sent to the game.
     openNpcap: () => (inApp ? tauri.core.invoke('open_npcap_page') : Promise.resolve(window.open('https://npcap.com', '_blank', 'noopener'))),
+    // Opens capture again after the Npcap admin-only prompt was declined; Windows asks again.
+    retryCapture: () => (inApp ? tauri.core.invoke('retry_capture') : post('/api/capture/retry', null, WRITE)),
     startDrag: () => { const w = currentWindow(); return w ? w.startDragging() : Promise.resolve(); },
     startResize: (direction) => { const w = currentWindow(); return w ? w.startResizeDragging(direction) : Promise.resolve(); },
     closeWindow: () => { const w = currentWindow(); return w ? w.close() : Promise.resolve(); },

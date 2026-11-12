@@ -4,7 +4,7 @@
 //! machine. Nothing is injected, and the game process is never opened.
 
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
 use std::thread;
@@ -36,7 +36,10 @@ pub fn start(state: Arc<AppState>, debug: Option<TargetDebug>) {
         .spawn(move || decode_loop(rx, worker, debug))
         .expect("decode thread");
     #[cfg(windows)]
-    spawn_capture(tx, state);
+    {
+        let _ = SENDER.set(tx.clone());
+        spawn_capture(tx, state);
+    }
     #[cfg(not(windows))]
     {
         let _ = tx;
@@ -205,36 +208,208 @@ fn decode_loop(rx: Receiver<Segment>, state: Arc<AppState>, mut debug: Option<Ta
     }
 }
 
+/// The decode queue, kept so Retry can open capture again.
+#[cfg(windows)]
+static SENDER: std::sync::OnceLock<SyncSender<Segment>> = std::sync::OnceLock::new();
+/// Adapters currently capturing. Retry only runs when this is 0.
+#[cfg(windows)]
+static LIVE: AtomicUsize = AtomicUsize::new(0);
+/// Set while an open (start or Retry) is in progress.
+#[cfg(windows)]
+static OPENING: AtomicBool = AtomicBool::new(false);
+
+/// Try to open capture again after it failed, for example after the user
+/// declined the Npcap admin-only prompt. Opening runs on its own thread, since
+/// Npcap may wait on the Windows prompt. Nothing is sent anywhere.
+pub fn retry(state: Arc<AppState>) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let Some(tx) = SENDER.get().cloned() else {
+            return Err("Capture is not available in this mode.".into());
+        };
+        if LIVE.load(Ordering::SeqCst) > 0 {
+            return Err("Capture is already running.".into());
+        }
+        if OPENING.swap(true, Ordering::SeqCst) {
+            return Err("Capture is already starting.".into());
+        }
+        tracing::warn!("capture: retrying capture open (user clicked Retry)");
+        thread::Builder::new()
+            .name("aion2dps-capture-open".into())
+            .spawn(move || spawn_capture(tx, state))
+            .map(|_| ())
+            .map_err(|err| {
+                OPENING.store(false, Ordering::SeqCst);
+                format!("Could not start capture: {err}")
+            })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = state;
+        Err("Packet capture in this build runs on Windows with Npcap.".into())
+    }
+}
+
+/// True when a capture failure is most likely the Npcap admin-only refusal:
+/// Npcap is installed with "Restrict Npcap driver's access to Administrators
+/// only" and this process is not elevated, so Npcap had to ask Windows through
+/// NpcapHelper.exe and could not get access.
+#[cfg(windows)]
+fn admin_only_blocked() -> bool {
+    npcap_admin_only_mode() && !process_elevated()
+}
+
+/// Reads (never writes) HKLM\SYSTEM\CurrentControlSet\Services\npcap\Parameters\AdminOnly.
+#[cfg(windows)]
+fn npcap_admin_only_mode() -> bool {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD};
+    let key: Vec<u16> = "SYSTEM\\CurrentControlSet\\Services\\npcap\\Parameters\0".encode_utf16().collect();
+    let value: Vec<u16> = "AdminOnly\0".encode_utf16().collect();
+    let mut data: u32 = 0;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    let rc = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            key.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_DWORD,
+            std::ptr::null_mut(),
+            (&mut data as *mut u32).cast(),
+            &mut size,
+        )
+    };
+    rc == 0 && data != 0
+}
+
+/// True when this process runs elevated (as Administrator).
+#[cfg(windows)]
+fn process_elevated() -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+    unsafe {
+        let mut token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return false;
+        }
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut size = 0u32;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            (&mut elevation as *mut TOKEN_ELEVATION).cast(),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut size,
+        );
+        CloseHandle(token);
+        ok != 0 && elevation.TokenIsElevated != 0
+    }
+}
+
+/// Capture could not be opened. In the admin-only case the status gets the
+/// admin-only message and flag; otherwise the plain error, as before.
+#[cfg(windows)]
+fn capture_failed(state: &AppState, admin_blocked: bool, raw: String) {
+    OPENING.store(false, Ordering::SeqCst);
+    if admin_blocked {
+        tracing::error!(
+            "capture: {NPCAP_ADMIN_ONLY} Npcap AdminOnly=1, process not elevated. Npcap said: {raw}"
+        );
+    } else {
+        tracing::warn!("capture: {raw}");
+    }
+    state.with_capture(|capture| {
+        capture.running = false;
+        capture.opening = false;
+        capture.npcap_admin_only = admin_blocked;
+        capture.error = Some(if admin_blocked { NPCAP_ADMIN_ONLY.to_string() } else { raw });
+    });
+}
+
 #[cfg(windows)]
 fn spawn_capture(tx: SyncSender<Segment>, state: Arc<AppState>) {
+    OPENING.store(true, Ordering::SeqCst);
+    let admin_blocked = admin_only_blocked();
+    state.with_capture(|capture| capture.opening = true);
     match open_devices() {
-        Ok(devices) if devices.is_empty() => state.with_capture(|capture| {
-            capture.error = Some(
-                "Npcap did not list a capture device. Install Npcap with WinPcap API-compatible mode, then run aion2dps as Administrator.".into(),
-            );
-        }),
+        Ok(devices) if devices.is_empty() => capture_failed(
+            &state,
+            admin_blocked,
+            "Npcap did not list a capture device. Install Npcap with WinPcap API-compatible mode, then run aion2dps as Administrator.".into(),
+        ),
         Ok(devices) => {
             let names: Vec<String> = devices.iter().map(|d| d.description.clone()).collect();
             state.with_capture(|capture| {
-                capture.running = true;
                 capture.devices = names;
-                capture.error = None;
+                // In admin-only mode an adapter may still be waiting on the
+                // Windows prompt, so "on" waits for the first open adapter.
+                if !admin_blocked {
+                    capture.running = true;
+                    capture.error = None;
+                    capture.npcap_admin_only = false;
+                }
             });
             let running = Arc::new(AtomicBool::new(true));
+            let outcome = Arc::new(Outcome { total: devices.len(), opened: AtomicUsize::new(0), failed: AtomicUsize::new(0) });
             for device in devices {
                 let tx = tx.clone();
                 let state = state.clone();
                 let running = running.clone();
-                thread::Builder::new()
+                let outcome = outcome.clone();
+                let spawned = thread::Builder::new()
                     .name(format!("aion2dps-{}", device.name))
-                    .spawn(move || capture_device(&device.name, tx, state, running))
-                    .ok();
+                    .spawn({
+                        let state = state.clone();
+                        let outcome = outcome.clone();
+                        move || capture_device(&device.name, tx, state, running, admin_blocked, &outcome)
+                    });
+                if spawned.is_err() {
+                    adapter_failed(&state, admin_blocked, &outcome, "could not start an adapter thread".into());
+                }
             }
         }
-        Err(err) => state.with_capture(|capture| {
-            capture.error = Some(err);
-        }),
+        Err(err) => capture_failed(&state, admin_blocked, err),
     }
+}
+
+/// How the adapters of one open attempt went.
+#[cfg(windows)]
+struct Outcome {
+    total: usize,
+    opened: AtomicUsize,
+    failed: AtomicUsize,
+}
+
+/// One adapter failed. Once every adapter failed, the whole capture failed.
+#[cfg(windows)]
+fn adapter_failed(state: &AppState, admin_blocked: bool, outcome: &Outcome, raw: String) {
+    if !admin_blocked {
+        state.with_capture(|capture| {
+            if capture.error.is_none() {
+                capture.error = Some(raw.clone());
+            }
+        });
+    }
+    let failed = outcome.failed.fetch_add(1, Ordering::SeqCst) + 1;
+    if failed >= outcome.total && outcome.opened.load(Ordering::SeqCst) == 0 {
+        capture_failed(state, admin_blocked, raw);
+    }
+}
+
+/// One adapter is capturing.
+#[cfg(windows)]
+fn adapter_opened(state: &AppState, admin_blocked: bool, outcome: &Outcome) {
+    outcome.opened.fetch_add(1, Ordering::SeqCst);
+    LIVE.fetch_add(1, Ordering::SeqCst);
+    OPENING.store(false, Ordering::SeqCst);
+    state.with_capture(|capture| {
+        capture.running = true;
+        capture.opening = false;
+        if admin_blocked || capture.npcap_admin_only {
+            capture.error = None;
+            capture.npcap_admin_only = false;
+        }
+    });
 }
 
 #[cfg(windows)]
@@ -284,11 +459,13 @@ fn capture_device(
     tx: SyncSender<Segment>,
     state: Arc<AppState>,
     running: Arc<AtomicBool>,
+    admin_blocked: bool,
+    outcome: &Outcome,
 ) {
     let lib = match load_npcap() {
         Ok(lib) => lib,
         Err(err) => {
-            state.with_capture(|capture| capture.error = Some(err));
+            adapter_failed(&state, admin_blocked, outcome, err);
             return;
         }
     };
@@ -297,7 +474,9 @@ fn capture_device(
         std::ffi::CString::new(name).unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
     let handle = unsafe { (lib.create)(c_name.as_ptr(), err.as_mut_ptr()) };
     if handle.is_null() {
-        tracing::warn!("skipping adapter {name}: {}", cstr(&err));
+        let message = cstr(&err);
+        tracing::warn!("skipping adapter {name}: {message}");
+        adapter_failed(&state, admin_blocked, outcome, format!("Could not open {name}: {message}."));
         return;
     }
     unsafe {
@@ -311,16 +490,17 @@ fn capture_device(
         let activated = (lib.activate)(handle);
         if activated < 0 {
             let message = cstr_ptr((lib.geterr)(handle));
-            state.with_capture(|capture| {
-                if capture.error.is_none() {
-                    capture.error = Some(format!(
-                        "Could not open {name}: {message}. Install Npcap with WinPcap API-compatible mode and run as Administrator."
-                    ));
-                }
-            });
+            tracing::warn!("could not open adapter {name}: {message}");
+            adapter_failed(
+                &state,
+                admin_blocked,
+                outcome,
+                format!("Could not open {name}: {message}. Install Npcap with WinPcap API-compatible mode and run as Administrator."),
+            );
             (lib.close)(handle);
             return;
         }
+        adapter_opened(&state, admin_blocked, outcome);
         let filter = std::ffi::CString::new("tcp and not port 80 and not port 443").unwrap();
         let mut program = BpfProgram {
             len: 0,
@@ -355,6 +535,7 @@ fn capture_device(
         }
     }
     unsafe { (lib.close)(handle) };
+    LIVE.fetch_sub(1, Ordering::SeqCst);
 }
 
 #[cfg(windows)]
@@ -444,6 +625,11 @@ pub const NPCAP_URL: &str = "https://npcap.com";
 /// Shown in the capture status when wpcap.dll cannot be loaded. The pages key
 /// their "Get Npcap" button off the word Npcap, so keep it in this text.
 pub const NPCAP_MISSING: &str = "Npcap was not found. aion2dps needs Npcap for live capture. Install it from https://npcap.com with 'WinPcap API-compatible Mode' checked, then run aion2dps as Administrator.";
+
+/// Shown when capture failed because Npcap is in admin-only mode and the
+/// Windows prompt from NpcapHelper.exe was declined. The pages key their Retry
+/// banner off `CaptureInfo::npcap_admin_only`, not this text.
+pub const NPCAP_ADMIN_ONLY: &str = "Capture couldn't start: Npcap is in admin-only mode and the Windows permission prompt was declined.";
 
 #[cfg(windows)]
 struct Npcap {

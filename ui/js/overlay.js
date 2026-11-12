@@ -168,7 +168,7 @@
     const players = m.players;
     if (!players.length) {
       box.className = 'rows empty';
-      emptyRows(box, data.capture.error, 'Waiting for combat');
+      emptyRows(box, data.capture, 'Waiting for combat');
       return;
     }
     box.className = f.ended ? 'rows dim' : 'rows';
@@ -204,7 +204,7 @@
     const rows = heals.healerRows(m.healers);
     if (!rows.length) {
       box.className = 'rows empty';
-      emptyRows(box, data.capture.error, 'No healing yet');
+      emptyRows(box, data.capture, 'No healing yet');
       return;
     }
     box.className = f.ended ? 'rows dim' : 'rows';
@@ -234,8 +234,16 @@
     }).join('');
   }
 
-  /** Empty-state text; a missing-Npcap error also gets a "Get Npcap" button. */
-  function emptyRows(box, error, idle) {
+  /**
+   * Empty-state text; a missing-Npcap error also gets a "Get Npcap" button,
+   * and a declined Npcap admin-only prompt gets Retry and "How to fix".
+   */
+  function emptyRows(box, capture, idle) {
+    if (npcapHelp.adminOnly(capture)) {
+      adminOnlyRows(box, capture);
+      return;
+    }
+    const error = capture && capture.error;
     const text = error || idle;
     // Pushes arrive several times a second; keep the same button so a click lands.
     if (box.dataset.empty === text && box.querySelector('.get-npcap')) return;
@@ -249,6 +257,49 @@
     btn.textContent = npcapHelp.BUTTON;
     btn.addEventListener('click', () => bridge.openNpcap());
     box.append(btn);
+  }
+
+  function noticeButton(label, title, onClick) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'get-npcap';
+    btn.title = title;
+    btn.textContent = label;
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  /** Npcap admin-only prompt declined: say so, offer Retry, and send the fix to the meter. */
+  function adminOnlyRows(box, capture) {
+    const key = `admin-only:${capture.opening ? 'opening' : 'idle'}`;
+    // Pushes arrive several times a second; keep the same buttons so a click lands.
+    if (box.dataset.empty === key) return;
+    box.dataset.empty = key;
+    box.textContent = '';
+    const msg = document.createElement('div');
+    msg.className = 'npcap-admin-msg';
+    msg.textContent = npcapHelp.ADMIN_ONLY_SHORT;
+    const actions = document.createElement('div');
+    actions.className = 'npcap-actions';
+    const retry = noticeButton(
+      capture.opening ? npcapHelp.RETRYING : npcapHelp.RETRY,
+      'Ask Windows again; choose Yes on the Npcap prompt',
+      () => {
+        retry.disabled = true;
+        retry.textContent = npcapHelp.RETRYING;
+        bridge.retryCapture()
+          // Redraw from the next push, so a quick refusal can't leave it stuck.
+          .then(() => setTimeout(() => { delete box.dataset.empty; }, 1500))
+          .catch(() => {
+            retry.disabled = false;
+            retry.textContent = npcapHelp.RETRY;
+          });
+      },
+    );
+    retry.disabled = Boolean(capture.opening);
+    const fix = noticeButton('How to fix', 'Open the detailed meter for the permanent fix', () => bridge.openMeter());
+    actions.append(retry, fix);
+    box.append(msg, actions);
   }
 
   function showError() {
@@ -321,12 +372,20 @@
     topBarPx = Math.ceil(el.getBoundingClientRect().height) || topBarPx;
   }
 
+  /** Buttons in the empty-state notice (Get Npcap, Retry) take clicks too. */
+  function noticeHit(x, y) {
+    return Array.from(document.querySelectorAll('#rows .get-npcap')).some((btn) => {
+      const r = btn.getBoundingClientRect();
+      return x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+    });
+  }
+
   function wantsCapture(x, y) {
     const w = window.innerWidth;
     const h = window.innerHeight;
     if (!clickThrough || holding) return true;
     if (x < 0 || y < 0 || x >= w || y >= h) return false;
-    if (y < topBarPx || cubes.hit(x, y)) return true;
+    if (y < topBarPx || cubes.hit(x, y) || noticeHit(x, y)) return true;
     return x < EDGE_PX || x >= w - EDGE_PX || y >= h - EDGE_PX;
   }
 

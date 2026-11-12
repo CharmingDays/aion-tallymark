@@ -91,6 +91,7 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> std::io::Result<u16> {
     let app = Router::new()
         .route("/api/live", get(live))
         .route("/api/reset", post(reset))
+        .route("/api/capture/retry", post(retry_capture))
         .route("/api/mode", post(mode))
         .route("/api/settings", post(settings))
         .route("/api/toast-style", post(toast_style))
@@ -143,6 +144,18 @@ async fn live(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         [(header::CACHE_CONTROL, "no-store")],
         Json(state.live(now_ms())),
     )
+}
+
+/// Retry opening capture (the Npcap admin-only banner). Needs the write header,
+/// since it can bring up the Windows permission prompt.
+async fn retry_capture(State(state): State<Arc<AppState>>, headers: HeaderMap, body: Bytes) -> Response {
+    if let Err(rejected) = check_write(&headers, &body) {
+        return rejected;
+    }
+    match crate::capture::retry(state) {
+        Ok(()) => StatusCode::ACCEPTED.into_response(),
+        Err(message) => (StatusCode::CONFLICT, message).into_response(),
+    }
 }
 
 async fn reset(State(state): State<Arc<AppState>>) -> StatusCode {

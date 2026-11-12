@@ -245,15 +245,41 @@
     note.title = note.textContent;
     note.hidden = !note.textContent;
     const cap = $('capture');
-    $('get-npcap').hidden = !npcapHelp.needsNpcap(c.error);
+    const adminOnly = npcapHelp.adminOnly(c);
+    renderNpcapBanner(c, adminOnly);
+    // The admin-only banner has its own npcap.com button.
+    $('get-npcap').hidden = adminOnly || !npcapHelp.needsNpcap(c.error);
     if (c.error) {
       cap.className = 'capture bad';
       cap.textContent = c.error;
       return;
     }
+    if (c.opening && !c.running) {
+      cap.className = 'capture';
+      cap.textContent = 'Starting capture\u2026';
+      return;
+    }
     cap.className = 'capture good';
     const port = c.locked_port == null ? 'looking for the game' : `server port ${c.locked_port}`;
     cap.textContent = `${c.running ? 'Capture on' : 'Capture off'} \u00b7 ${c.demo ? 'demo data' : port} \u00b7 ${full(c.hits)} hits \u00b7 ${full(c.segments)} segments \u00b7 ${full(c.drops)} dropped`;
+  }
+
+  /** Banner for a declined Npcap admin-only prompt: what happened, Retry, and the permanent fix. */
+  function renderNpcapBanner(c, adminOnly) {
+    const banner = $('npcap-banner');
+    banner.hidden = !adminOnly;
+    if (!adminOnly) return;
+    $('npcap-banner-title').textContent = npcapHelp.ADMIN_ONLY_TITLE;
+    $('npcap-banner-detail').textContent = npcapHelp.ADMIN_ONLY_DETAIL;
+    $('npcap-banner-fix').textContent = npcapHelp.ADMIN_ONLY_FIX;
+    const retry = $('npcap-retry');
+    if (c.opening) {
+      retry.disabled = true;
+      retry.textContent = npcapHelp.RETRYING;
+    } else if (!retry.dataset.pending) {
+      retry.disabled = false;
+      retry.textContent = npcapHelp.RETRY;
+    }
   }
 
   function render(data) {
@@ -303,6 +329,20 @@
   }
 
   $('get-npcap').addEventListener('click', () => bridge.openNpcap());
+  $('npcap-open').addEventListener('click', () => bridge.openNpcap());
+  $('npcap-retry').addEventListener('click', () => {
+    const retry = $('npcap-retry');
+    retry.disabled = true;
+    retry.textContent = npcapHelp.RETRYING;
+    // Held until the app reports the attempt (opening), so a push can't re-enable it first.
+    retry.dataset.pending = '1';
+    setTimeout(() => { delete retry.dataset.pending; }, 1500);
+    bridge.retryCapture().catch(() => {
+      delete retry.dataset.pending;
+      retry.disabled = false;
+      retry.textContent = npcapHelp.RETRY;
+    });
+  });
   $('target').addEventListener('click', () => naming.click());
   $('players').addEventListener('click', (event) => {
     const row = event.target.closest('tr[data-id]');

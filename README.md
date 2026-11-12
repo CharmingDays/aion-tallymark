@@ -28,6 +28,7 @@ The app reads copies of the game packets your PC already receives, through Npcap
 - [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (built into Windows 11; the installer downloads it if missing).
 - [Npcap](https://npcap.com/) installed with **"Install Npcap in WinPcap API-compatible Mode"** checked. Without Npcap the app starts but can only run `--demo`; it shows a notice with a link.
 - Run the app **as Administrator** for live capture.
+- If Npcap was installed with **"Restrict Npcap driver's access to Administrators only"** ticked, Windows asks for permission ("The helper program for 'Admin-only Mode'") each time capture starts. Clicking No stops capture; the overlay and detailed meter say so and offer **Retry**. To stop the prompt, reinstall Npcap from [npcap.com](https://npcap.com/) with that box unticked.
 
 ## Install
 

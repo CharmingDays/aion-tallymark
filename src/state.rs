@@ -29,6 +29,12 @@ pub struct CaptureInfo {
     pub drops: u64,
     pub locked_port: Option<u16>,
     pub error: Option<String>,
+    /// Capture failed because Npcap is in admin-only mode and this
+    /// non-elevated process was refused (the Windows prompt was declined).
+    pub npcap_admin_only: bool,
+    /// True while capture is being opened (at start or after Retry), when the
+    /// Npcap admin-only prompt may be on screen.
+    pub opening: bool,
     /// Set only while the opt-in target debug log is on.
     pub target_debug: Option<DebugInfo>,
 }
@@ -46,6 +52,8 @@ impl Default for CaptureInfo {
             drops: 0,
             locked_port: None,
             error: None,
+            npcap_admin_only: false,
+            opening: false,
             target_debug: None,
         }
     }

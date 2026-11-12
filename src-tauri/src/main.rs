@@ -693,6 +693,13 @@ fn open_release_page() {
     open_browser(updater::RELEASES);
 }
 
+/// Retry in the Npcap admin-only notice: open capture again, which brings the
+/// Windows permission prompt back. Nothing is sent to the game.
+#[tauri::command]
+fn retry_capture(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+    aion2dps::capture::retry(state.inner().clone())
+}
+
 /// The "Get Npcap" button. The URL is fixed here, never taken from the page.
 #[tauri::command]
 fn open_npcap_page() {
@@ -1212,6 +1219,7 @@ fn main() {
             open_history,
             open_in_browser,
             open_npcap_page,
+            retry_capture,
             check_update,
             install_update,
             app_version,

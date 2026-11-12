@@ -374,6 +374,10 @@ body:not(.in-app) .app-only { display: none !important; }
 .rows.empty { flex-direction: column; gap: .5rem; }
 .get-npcap { padding: .3rem .8rem; border: 1px solid var(--line, #3a3f4a); border-radius: 5px; background: transparent; color: inherit; font: inherit; font-size: 1.05rem; cursor: pointer; }
 .get-npcap:hover { background: rgba(255,255,255,.06); }
+.get-npcap:disabled { opacity: .55; cursor: default; }
+/* Npcap admin-only prompt declined: message, then Retry / How to fix. */
+.npcap-admin-msg { color: #FF8B7B; line-height: 1.35; }
+.npcap-actions { display: flex; gap: .5rem; justify-content: center; flex-wrap: wrap; }
 
 /* Narrow: shed chrome, then columns. Also honored via body.narrow from JS
    so presentation mocks and future container sizing stay consistent. */

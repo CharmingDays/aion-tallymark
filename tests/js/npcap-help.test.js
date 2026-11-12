@@ -16,3 +16,11 @@ test('only Npcap errors show the button', () => {
   assert.ok(!npcap.needsNpcap(null));
   assert.ok(!npcap.needsNpcap(undefined));
 });
+test('only a declined admin-only prompt shows Retry', () => {
+  assert.ok(npcap.adminOnly({ npcap_admin_only: true, error: 'x' }));
+  assert.ok(!npcap.adminOnly({ npcap_admin_only: false, error: 'Npcap was not found.' }));
+  assert.ok(!npcap.adminOnly(null));
+  assert.ok(!npcap.adminOnly(undefined));
+  assert.ok(npcap.ADMIN_ONLY_FIX.includes('npcap.com'));
+  assert.ok(npcap.ADMIN_ONLY_FIX.includes('Restrict Npcap driver\u2019s access to Administrators only'));
+});
