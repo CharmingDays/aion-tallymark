@@ -2,7 +2,8 @@
 //! session history windows, on top of the passive packet engine in the
 //! `aion2dps` crate.
 //!
-//! Closing the overlay keeps the app in the system tray. A process-name poll
+//! Closing the overlay keeps the app in the system tray when "Minimize to
+//! tray when overlay is closed" is on (the default). A process-name poll
 //! (no game interaction) shows the overlay again when `AION2.exe` starts, if
 //! "Open automatically when Aion 2 is detected" is on.
 //!
@@ -174,6 +175,11 @@ fn unlock(state: State<'_, Arc<AppState>>) {
 #[tauri::command]
 fn set_open_when_aion2(state: State<'_, Arc<AppState>>, on: bool) {
     state.set_open_when_aion2(on);
+}
+
+#[tauri::command]
+fn set_minimize_to_tray(state: State<'_, Arc<AppState>>, on: bool) {
+    state.set_minimize_to_tray(on);
 }
 
 #[tauri::command]
@@ -976,10 +982,11 @@ fn schedule_overlay_save(app: &AppHandle) {
     });
 }
 
-/// The overlay is the main window: closing it hides to the tray (the meter
-/// and history windows hide with it). Other windows only close themselves.
-/// Right-click the overlay close button, or Quit on the tray icon, exits.
-fn closing_hides_to_tray(label: &str) -> bool {
+/// The overlay is the main window: closing it hides to the tray or quits,
+/// depending on "Minimize to tray when overlay is closed". Other windows
+/// only close themselves. Right-click the overlay close button, or Quit
+/// on the tray icon, always exits.
+fn is_overlay(label: &str) -> bool {
     label == OVERLAY
 }
 
@@ -1189,6 +1196,7 @@ fn main() {
             set_boss_settings,
             unlock,
             set_open_when_aion2,
+            set_minimize_to_tray,
             set_start_with_windows,
             set_pop_up_on_boss,
             set_overlay_click_through,
@@ -1245,8 +1253,15 @@ fn main() {
                 }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if closing_hides_to_tray(window.label()) {
-                    close_overlay_to_tray(window.app_handle(), api);
+                if is_overlay(window.label()) {
+                    let app = window.app_handle();
+                    if app.state::<Arc<AppState>>().minimize_to_tray() {
+                        close_overlay_to_tray(app, api);
+                    } else {
+                        // Same full-quit path as quit_app and the tray Quit item.
+                        tracing::info!(target: "overlay", "quitting because the overlay was closed");
+                        app.exit(0);
+                    }
                 }
             }
         })
@@ -1309,10 +1324,10 @@ mod tests {
     }
 
     #[test]
-    fn only_the_overlay_hides_to_the_tray() {
-        assert!(closing_hides_to_tray(OVERLAY));
+    fn only_the_overlay_uses_the_close_setting() {
+        assert!(is_overlay(OVERLAY));
         for label in [METER, HISTORY, "toast-0", "toast-7"] {
-            assert!(!closing_hides_to_tray(label), "{label}");
+            assert!(!is_overlay(label), "{label}");
         }
     }
 }

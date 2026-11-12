@@ -233,6 +233,7 @@
       case 'boss_damage_threshold': return bridge.setBossSettings({ damageThreshold: v });
       case 'boss_engage_lock': return bridge.setBossSettings({ engageLock: v });
       case 'open_when_aion2': return bridge.setOpenWhenAion2(v);
+      case 'minimize_to_tray': return bridge.setMinimizeToTray(v);
       case 'start_with_windows': return bridge.setStartWithWindows(v);
       case 'pop_up_on_boss': return bridge.setPopUpOnBoss(v);
       case 'overlay_click_through': return bridge.setOverlayClickThrough(v);

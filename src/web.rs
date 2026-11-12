@@ -170,6 +170,7 @@ struct SettingsBody {
     boss_damage_threshold: Option<i64>,
     boss_engage_lock: Option<bool>,
     open_when_aion2: Option<bool>,
+    minimize_to_tray: Option<bool>,
     overlay_click_through: Option<bool>,
     hidden_cube_alerts: Option<bool>,
     pet_toasts: Option<bool>,
@@ -215,6 +216,9 @@ async fn settings(
     }
     if let Some(on) = body.open_when_aion2 {
         state.set_open_when_aion2(on);
+    }
+    if let Some(on) = body.minimize_to_tray {
+        state.set_minimize_to_tray(on);
     }
     if let Some(on) = body.overlay_click_through {
         state.set_overlay_click_through(on);

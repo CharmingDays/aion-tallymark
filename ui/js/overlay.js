@@ -125,9 +125,14 @@
   function render(data) {
     latest = data;
     window.toastStyle.remember(data.toast_styles);
-    if (data.settings && typeof data.settings.overlay_click_through === 'boolean') {
-      clickThrough = data.settings.overlay_click_through;
-      if (!clickThrough) applyCapture(true);
+    if (data.settings) {
+      if (typeof data.settings.overlay_click_through === 'boolean') {
+        clickThrough = data.settings.overlay_click_through;
+        if (!clickThrough) applyCapture(true);
+      }
+      if (typeof data.settings.minimize_to_tray === 'boolean') {
+        paintCloseTitle(data.settings.minimize_to_tray);
+      }
     }
     const m = data.meter;
     const f = fightState(data);
@@ -342,6 +347,11 @@
     localStorage.setItem(VIEW_KEY, view);
     if (latest) render(latest);
   }));
+  const CLOSE_TRAY = 'Left-click: hide to tray \u00b7 Right-click: quit';
+  const CLOSE_QUIT = 'Close app';
+  function paintCloseTitle(minimizeToTray) {
+    $('close').title = minimizeToTray ? CLOSE_TRAY : CLOSE_QUIT;
+  }
   $('close').addEventListener('click', () => bridge.closeWindow());
   $('close').addEventListener('contextmenu', (event) => {
     event.preventDefault();

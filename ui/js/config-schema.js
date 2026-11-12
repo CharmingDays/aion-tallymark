@@ -37,6 +37,10 @@
   });
 
   const SETTINGS = [
+    { id: 'minimize_to_tray', section: 'general', card: 'App', type: 'toggle', default: true, appOnly: true,
+      label: 'Minimize to tray when overlay is closed',
+      desc: 'Left-click the overlay close button to hide aion2dps to the tray. Turn this off to quit instead. Right-click always quits.',
+      keywords: ['tray', 'close', 'quit', 'minimize', 'exit'] },
     { id: 'open_when_aion2', section: 'general', card: 'App', type: 'toggle', default: false, appOnly: true,
       label: 'Open automatically when Aion 2 is detected',
       desc: 'If the overlay is hidden in the tray, it reopens when the game starts.',

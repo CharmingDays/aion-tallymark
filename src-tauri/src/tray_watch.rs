@@ -1,9 +1,10 @@
 //! System tray wait mode and AION 2 process watcher.
 //!
-//! Closing the overlay hides the windows and keeps the process alive in the
-//! tray. When "Open automatically when Aion 2 is detected" is on, a lightweight
-//! poll of process names (no game interaction) shows the overlay again only on
-//! the transition from not-running to running.
+//! When "Minimize to tray when overlay is closed" is on, closing the overlay
+//! hides the windows and keeps the process alive in the tray. When "Open
+//! automatically when Aion 2 is detected" is on, a lightweight poll of process
+//! names (no game interaction) shows the overlay again only on the transition
+//! from not-running to running.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
