@@ -69,15 +69,15 @@ expires after 12 seconds and gone after 6. The X is explicitly included in the
 The event notification implementation is unchanged. Text is written with
 textContent; middle dots are JS escapes or HTML entities.
 
-## Exact live discovery procedure (requires a separately approved test build)
+## Exact live discovery procedure
 
-1. Do not use the existing v0.2.2 executable: it lacks this code. No app exe or
-   installer was built as part of this change. After approving a test rebuild,
-   close the running meter and launch THAT rebuilt executable from PowerShell:
+1. Use v0.3.0 or newer (v0.2.2 and older lack this code). Close the running
+   meter and start it from PowerShell with the cubes log on (or switch on
+   Config > Advanced > Debug logs > Cubes):
 
    ```powershell
    $env:AION2DPS_DEBUG_CUBES = '1'
-   & 'C:\Users\kowai\Documents\Github\aion2dps\src-tauri\target\release\aion2dps.exe'
+   & "$env:LOCALAPPDATA\aion2dps\aion2dps.exe"
    ```
 
 2. Launch before logging into the character or changing zones so self identity
